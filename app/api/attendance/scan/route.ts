@@ -62,22 +62,51 @@ export async function POST(request: Request) {
     }
 
     // 2. Cek Surat Penugasan Anggota (activity_assignments)
-    const { data: assignment } = await supabase
+    let { data: assignment } = await supabase
       .from('activity_assignments')
       .select('id, assignment_status, assignment_type')
       .eq('activity_id', targetActivityId)
       .eq('member_id', user.id)
-      .single();
+      .maybeSingle();
+
+    if (!assignment) {
+      // Cek apakah pengguna saat ini adalah BPH / Admin
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('system_role, full_name')
+        .eq('id', user.id)
+        .single();
+
+      if (userProfile && userProfile.system_role === 'admin') {
+        // BPH / Admin otomatis diberikan penugasan aktif agar dapat langsung check-in
+        const { data: newAsg, error: asgErr } = await supabase
+          .from('activity_assignments')
+          .insert({
+            activity_id: targetActivityId,
+            member_id: user.id,
+            assignment_type: 'attendance_required',
+            assignment_description: 'Mandat Pengawas BPH / Pengurus Inti',
+            assignment_status: 'active',
+            assigned_by: user.id,
+          })
+          .select('id, assignment_status, assignment_type')
+          .single();
+
+        if (!asgErr && newAsg) {
+          assignment = newAsg;
+        }
+      }
+    }
 
     if (!assignment) {
       return NextResponse.json({
-        error: 'Presensi ditolak: Anda tidak memiliki surat tugas sah pada kegiatan ini.',
+        error: `Presensi ditolak: Anda belum memiliki surat penugasan sah pada agenda "${activity.activity_name}". Silakan minta Koordinator Sie Anda atau Admin untuk menugaskan Anda terlebih dahulu di menu Detail Kegiatan.`,
       }, { status: 403 });
     }
 
     if (assignment.assignment_status !== 'active') {
       return NextResponse.json({
-        error: `Presensi ditolak: Status penugasan Anda adalah "${assignment.assignment_status}", bukan active.`,
+        error: `Presensi ditolak: Status penugasan Anda pada kegiatan ini adalah "${assignment.assignment_status}", bukan active.`,
       }, { status: 403 });
     }
 
