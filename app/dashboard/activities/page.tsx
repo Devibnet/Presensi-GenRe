@@ -39,6 +39,7 @@ export default function ActivitiesPage() {
   const [checkInClosesAt, setCheckInClosesAt] = useState('');
   const [checkOutOpensAt, setCheckOutOpensAt] = useState('');
   const [checkOutClosesAt, setCheckOutClosesAt] = useState('');
+  const [assignAllMembers, setAssignAllMembers] = useState(false);
 
   const supabase = createClient();
 
@@ -118,9 +119,43 @@ export default function ActivitiesPage() {
           session_status: 'open',
           created_by: user.id,
         });
+
+        // Jika opsi wajib hadir seluruh panitia dicentang, tugaskan seluruh panitia aktif
+        if (assignAllMembers) {
+          const { data: allMembers } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('account_status', 'active');
+
+          if (allMembers && allMembers.length > 0) {
+            const batchAssignments = allMembers.map(m => ({
+              activity_id: data.id,
+              member_id: m.id,
+              assignment_type: 'attendance_required',
+              assignment_description: 'Wajib Hadir Seluruh Panitia',
+              assignment_status: 'active',
+              assigned_by: user.id,
+            }));
+
+            await supabase
+              .from('activity_assignments')
+              .upsert(batchAssignments, { onConflict: 'activity_id,member_id' });
+          }
+        }
       }
 
       setIsCreateModalOpen(false);
+      setActivityCode('');
+      setActivityName('');
+      setActivityLocation('');
+      setActivityDescription('');
+      setStartAt('');
+      setEndAt('');
+      setCheckInOpensAt('');
+      setCheckInClosesAt('');
+      setCheckOutOpensAt('');
+      setCheckOutClosesAt('');
+      setAssignAllMembers(false);
       fetchActivities();
     } catch (err: any) {
       alert('Gagal membuat agenda: ' + err.message);
@@ -340,6 +375,22 @@ export default function ActivitiesPage() {
                 className="w-full p-2 rounded-xl bg-slate-900 border border-slate-700 text-white"
               />
             </div>
+          </div>
+
+          {/* Opsi Wajib Hadir Seluruh Panitia */}
+          <div className="p-3 bg-brand-500/10 border border-brand-500/20 rounded-xl">
+            <label className="flex items-center gap-2.5 cursor-pointer text-xs font-semibold text-brand-300">
+              <input
+                type="checkbox"
+                checked={assignAllMembers}
+                onChange={(e) => setAssignAllMembers(e.target.checked)}
+                className="rounded border-slate-700 text-brand-600 focus:ring-brand-500 w-4 h-4"
+              />
+              <span>Wajib Hadir Seluruh Panitia (Otomatis tugaskan seluruh anggota panitia aktif)</span>
+            </label>
+            <p className="text-[11px] text-slate-400 mt-1 pl-6">
+              Cocok untuk Rapat Pleno, Gladi Bersih, atau Malam Grand Final di mana seluruh panitia wajib hadir tanpa perlu ditugaskan manual per sie.
+            </p>
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
