@@ -108,3 +108,25 @@ export function getStatusBadgeClass(status: string): string {
       return 'bg-slate-500/10 text-slate-400 border border-slate-500/30';
   }
 }
+
+export function sanitizeSupabaseUrl(url?: string | null): string {
+  if (!url) return 'https://placeholder-genre.supabase.co';
+  let cleaned = url.trim();
+  // Tangani typo double http/https (misal: hhttps://)
+  if (cleaned.startsWith('hhttps://')) {
+    cleaned = cleaned.replace(/^hhttps:\/\//, 'https://');
+  } else if (cleaned.startsWith('http://') === false && cleaned.startsWith('https://') === false) {
+    cleaned = `https://${cleaned}`;
+  }
+  return cleaned;
+}
+
+export function isValidHttpUrl(string?: string | null): boolean {
+  if (!string) return false;
+  try {
+    const url = new URL(string);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch (_) {
+    return false;
+  }
+}
