@@ -1,7 +1,7 @@
 import React from 'react';
+import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
-import { Sidebar } from '@/components/ui/Sidebar';
-import { Navbar } from '@/components/ui/Navbar';
+import { DashboardLayoutClient } from '@/components/layout/DashboardLayoutClient';
 import { SystemRole } from '@/lib/types';
 
 export default async function DashboardLayout({
@@ -11,48 +11,42 @@ export default async function DashboardLayout({
 }) {
   const supabase = await createClient();
 
-  let userRole: SystemRole = 'admin';
-  let userName = 'Putu Gede Adnyana';
-  let userPosition = 'Ketua Panitia (Demo)';
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Wajib login: Jika tidak ada sesi user yang valid, arahkan ke login
+  if (!user) {
+    redirect('/login');
+  }
+
+  let userRole: SystemRole = 'member';
+  let userName = user.email ? user.email.split('@')[0] : 'Panitia GenRe';
+  let userPosition = 'Panitia Pelaksana';
 
   try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('full_name, system_role, organization_position')
+      .eq('id', user.id)
+      .single();
 
-    if (user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('full_name, system_role, organization_position')
-        .eq('id', user.id)
-        .single();
-
-      if (profile) {
-        userRole = profile.system_role as SystemRole;
-        userName = profile.full_name;
-        userPosition = profile.organization_position;
-      } else {
-        userName = user.email || 'Pengguna';
-      }
+    if (profile) {
+      userRole = (profile.system_role as SystemRole) || 'member';
+      userName = profile.full_name || userName;
+      userPosition = profile.organization_position || userPosition;
     }
   } catch (e) {
-    // Mode demo / fallback jika database belum terhubung
+    console.warn('Gagal memuat profil pengguna aktif di DashboardLayout:', e);
   }
 
   return (
-    <div className="min-h-screen flex bg-navy-950 text-slate-100">
-      {/* Desktop Sidebar */}
-      <div className="hidden lg:block">
-        <Sidebar userRole={userRole} userName={userName} userPosition={userPosition} />
-      </div>
-
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <Navbar title="GenRe Attendance Panel" />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
-          {children}
-        </main>
-      </div>
-    </div>
+    <DashboardLayoutClient
+      userRole={userRole}
+      userName={userName}
+      userPosition={userPosition}
+    >
+      {children}
+    </DashboardLayoutClient>
   );
 }

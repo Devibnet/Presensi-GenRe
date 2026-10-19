@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test:db": "node scripts/verify-schema.mjs && node scripts/test-database-execution.mjs && node scripts/test-queries.mjs"
+    "test:db": "node scripts/verify-schema.mjs && node scripts/test-database-execution.mjs && node scripts/test-queries.mjs",
+    "test:import": "node scripts/test-import-panitia.mjs",
+    "test:roles": "node scripts/test-roles-and-login.mjs",
+    "test:eval": "node scripts/test-evaluation-permissions.mjs",
+    "test": "npm run test:db && npm run test:import && npm run test:roles && npm run test:eval"
   },
   "author": "",
   "license": "ISC",
@@ -34,6 +38,7 @@
     "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "tailwind-merge": "^3.7.0"
+    "tailwind-merge": "^3.7.0",
+    "xlsx": "^0.18.5"
   }
 }

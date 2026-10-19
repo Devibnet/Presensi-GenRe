@@ -261,6 +261,7 @@ export interface FinalEvaluation {
   // Joins
   member?: Profile | null;
   certificate?: Certificate | null;
+  review?: PerformanceReview | null;
 }
 
 export interface Certificate {
@@ -294,6 +295,7 @@ export interface ClarificationRequest {
   updated_at: string;
   // Joins
   member?: Profile | null;
+  related_activity?: Activity | null;
 }
 
 export interface Notification {

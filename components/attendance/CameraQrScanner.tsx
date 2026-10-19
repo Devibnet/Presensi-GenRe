@@ -166,16 +166,16 @@ export function CameraQrScanner({ onScanSuccess, onClose }: CameraQrScannerProps
   };
 
   return (
-    <div className="relative bg-navy-950 border border-brand-500/30 rounded-2xl p-4 shadow-2xl overflow-hidden max-w-md mx-auto text-white">
+    <div className="relative bg-white border border-slate-200 rounded-2xl p-4 shadow-xl overflow-hidden max-w-md mx-auto text-slate-900">
       {/* Top Controls */}
-      <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-800">
+      <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-xl bg-brand-500/20 text-brand-400 flex items-center justify-center">
+          <div className="w-8 h-8 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
             <Camera className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white">Pindai QR Presensi</h3>
-            <span className="text-[10px] text-slate-400">Arahkan kamera ke QR Code kegiatan</span>
+            <h3 className="text-sm font-bold text-slate-900">Pindai QR Presensi</h3>
+            <span className="text-[11px] text-slate-500">Arahkan kamera ke QR Code kegiatan</span>
           </div>
         </div>
 
@@ -184,7 +184,7 @@ export function CameraQrScanner({ onScanSuccess, onClose }: CameraQrScannerProps
             <button
               type="button"
               onClick={handleSwitchCamera}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
               title="Ganti Kamera"
             >
               <SwitchCamera className="w-4 h-4" />
@@ -197,7 +197,7 @@ export function CameraQrScanner({ onScanSuccess, onClose }: CameraQrScannerProps
                 await stopScanner();
                 onClose();
               }}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 hover:text-slate-900 transition-colors"
               title="Tutup Kamera"
             >
               <X className="w-4 h-4" />
@@ -207,28 +207,28 @@ export function CameraQrScanner({ onScanSuccess, onClose }: CameraQrScannerProps
       </div>
 
       {/* Viewport Scanner Element */}
-      <div className="relative rounded-xl overflow-hidden bg-slate-900 border border-slate-800 aspect-square flex items-center justify-center">
+      <div className="relative rounded-xl overflow-hidden bg-slate-950 border border-slate-900 aspect-square flex items-center justify-center">
         {/* HTML5 QR Code Container Element */}
         <div id={readerElementId} className="w-full h-full" />
 
         {/* Viewfinder Target Frame Overlay */}
         <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
-          <div className="w-48 h-48 border-2 border-brand-400/80 rounded-2xl relative shadow-[0_0_20px_rgba(34,197,94,0.3)]">
+          <div className="w-48 h-48 border-2 border-teal-400/80 rounded-2xl relative shadow-[0_0_20px_rgba(20,184,166,0.3)]">
             {/* Corner Markers */}
-            <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-brand-400 rounded-tl-sm" />
-            <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-brand-400 rounded-tr-sm" />
-            <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-brand-400 rounded-bl-sm" />
-            <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-brand-400 rounded-br-sm" />
+            <div className="absolute -top-1 -left-1 w-4 h-4 border-t-4 border-l-4 border-teal-400 rounded-tl-sm" />
+            <div className="absolute -top-1 -right-1 w-4 h-4 border-t-4 border-r-4 border-teal-400 rounded-tr-sm" />
+            <div className="absolute -bottom-1 -left-1 w-4 h-4 border-b-4 border-l-4 border-teal-400 rounded-bl-sm" />
+            <div className="absolute -bottom-1 -right-1 w-4 h-4 border-b-4 border-r-4 border-teal-400 rounded-br-sm" />
 
             {/* Scanning Laser Line */}
-            <div className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent animate-pulse top-1/2 -translate-y-1/2" />
+            <div className="absolute left-2 right-2 h-0.5 bg-gradient-to-r from-transparent via-teal-400 to-transparent animate-pulse top-1/2 -translate-y-1/2" />
           </div>
         </div>
 
         {/* State: Processing */}
         {isProcessing && (
-          <div className="absolute inset-0 bg-navy-950/80 backdrop-blur-sm flex flex-col items-center justify-center z-20">
-            <RefreshCw className="w-8 h-8 text-brand-400 animate-spin mb-2" />
+          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center z-20">
+            <RefreshCw className="w-8 h-8 text-teal-400 animate-spin mb-2" />
             <span className="text-xs font-semibold text-white">Memvalidasi Presensi...</span>
           </div>
         )}
@@ -236,8 +236,8 @@ export function CameraQrScanner({ onScanSuccess, onClose }: CameraQrScannerProps
 
       {/* Error Notice */}
       {errorMessage && (
-        <div className="mt-3 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-400" />
+        <div className="mt-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-500" />
           <div className="flex-1">
             <span className="font-semibold block mb-0.5">Kendala Kamera:</span>
             <span>{errorMessage}</span>
@@ -246,9 +246,9 @@ export function CameraQrScanner({ onScanSuccess, onClose }: CameraQrScannerProps
       )}
 
       {/* Bottom Option: Upload QR Image */}
-      <div className="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs">
-        <span className="text-slate-400 text-[11px]">Kamera bermasalah?</span>
-        <label className="cursor-pointer text-brand-400 hover:text-brand-300 font-semibold flex items-center gap-1.5 transition-colors">
+      <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+        <span className="text-slate-500 text-[11px]">Kamera bermasalah?</span>
+        <label className="cursor-pointer text-teal-600 hover:text-teal-700 font-semibold flex items-center gap-1.5 transition-colors">
           <Upload className="w-3.5 h-3.5" />
           <span>Unggah Berkas QR Code</span>
           <input

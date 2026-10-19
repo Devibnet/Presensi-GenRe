@@ -10,7 +10,9 @@ const migrationFiles = [
     '20261012000001_initial_schema.sql',
     '20261012000002_indexes_and_triggers.sql',
     '20261012000003_functions_and_views.sql',
-    '20261012000004_row_level_security.sql'
+    '20261012000004_row_level_security.sql',
+    '20261013000001_add_genre_2026_fields.sql',
+    '20261013000002_evaluation_permissions.sql'
 ];
 
 let allSchemaSql = '';

@@ -33,3 +33,11 @@ yarn-error.log*
 # TypeScript
 *.tsbuildinfo
 next-env.d.ts
+
+# Sensitive files
+.env
+.env.*
+!.env.example
+akun_panitia_genre_buleleng_2026.csv
+scripts/backup-database-pre-clean.json
+

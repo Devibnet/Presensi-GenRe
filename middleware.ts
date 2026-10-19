@@ -12,7 +12,7 @@ export async function middleware(request: NextRequest) {
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
   // Jika URL tidak valid atau masih placeholder, izinkan navigasi
-  if (!isValidHttpUrl(supabaseUrl) || supabaseUrl.includes('sample-genre-buleleng') || !supabaseAnonKey) {
+  if (!isValidHttpUrl(supabaseUrl) || !supabaseAnonKey) {
     return supabaseResponse;
   }
 
@@ -41,19 +41,36 @@ export async function middleware(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
 
-    const isAuthPage = request.nextUrl.pathname.startsWith('/login');
-    const isDashboardPage = request.nextUrl.pathname.startsWith('/dashboard');
+    const pathname = request.nextUrl.pathname;
+    const isLoginPage = pathname === '/login';
+    const isAuthRoute = pathname.startsWith('/auth') || pathname.startsWith('/api/auth') || pathname === '/api/evaluations/save';
 
-    if (!user && isDashboardPage) {
+    // 1. Setiap pengguna WAJIB login diawal.
+    // Jika belum login dan mencoba mengakses rute selain /login atau endpoint autentikasi:
+    if (!user && !isLoginPage && !isAuthRoute) {
+      // Jika request API selain auth, kembalikan response 401 Unauthorized
+      if (pathname.startsWith('/api/')) {
+        return NextResponse.json(
+          { error: 'Harap melakukan login terlebih dahulu untuk mengakses sistem.' },
+          { status: 401 }
+        );
+      }
+
       const url = request.nextUrl.clone();
       url.pathname = '/login';
-      url.searchParams.set('redirectTo', request.nextUrl.pathname);
+      // Simpan tujuan redirect jika bukan ke root '/'
+      if (pathname !== '/') {
+        const fullTarget = pathname + (request.nextUrl.search || '');
+        url.searchParams.set('redirectTo', fullTarget);
+      }
       return NextResponse.redirect(url);
     }
 
-    if (user && isAuthPage) {
+    // 2. Jika sudah terotentikasi dan mencoba mengakses /login atau root '/', arahkan ke /dashboard
+    if (user && (isLoginPage || pathname === '/')) {
       const url = request.nextUrl.clone();
       url.pathname = '/dashboard';
+      url.search = '';
       return NextResponse.redirect(url);
     }
   } catch (e) {
