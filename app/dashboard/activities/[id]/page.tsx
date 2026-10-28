@@ -41,6 +41,7 @@ import { Activity, ActivityAssignment, Profile, AttendanceSession, Field } from 
 import { formatDateTimeWITA, formatTimeWITA, getStatusBadgeClass, generateActivityCode } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { sendInAppNotification } from '@/lib/notifications';
+import { Skeleton, SkeletonStats, SkeletonTable } from '@/components/ui/Skeleton';
 
 export default function ActivityDetailPage() {
   const { toast } = useToast();
@@ -636,7 +637,7 @@ export default function ActivityDetailPage() {
         `Berhasil menugaskan ${selectedMemberIds.length} anggota panitia ke agenda ini.`
       );
 
-      // Kirim notifikasi in-app ke masing-masing panitia yang ditugaskan
+      // Kirim notifikasi in-app dan sinkronkan evaluasi ke masing-masing panitia yang ditugaskan
       selectedMemberIds.forEach((mId) => {
         sendInAppNotification({
           userId: mId,
@@ -645,6 +646,13 @@ export default function ActivityDetailPage() {
           notificationType: 'assignment',
           actionUrl: `/dashboard/activities/${activityId}`,
         });
+
+        // Sinkronkan skor evaluasi anggota secara instan
+        fetch('/api/evaluations/calculate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ memberId: mId }),
+        }).catch((e) => console.warn('Gagal sinkronisasi evaluasi penugasan:', e));
       });
 
       setIsAssignModalOpen(false);
@@ -832,9 +840,44 @@ export default function ActivityDetailPage() {
 
   if (loading && !activity) {
     return (
-      <div className="py-20 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
-        <div className="w-5 h-5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-        <span>Memuat detail kegiatan dan stasiun presensi QR...</span>
+      <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-36" />
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-6 w-24 rounded-lg" />
+                <Skeleton className="h-6 w-28 rounded-full" />
+              </div>
+              <Skeleton className="h-8 w-80 max-w-full" />
+            </div>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-9 w-24 rounded-xl" />
+              <Skeleton className="h-9 w-28 rounded-xl" />
+            </div>
+          </div>
+        </div>
+
+        <SkeletonStats count={4} />
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="p-6 rounded-3xl bg-white border border-slate-200/80 shadow-2xs space-y-4">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-64 w-64 mx-auto rounded-2xl" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-3/4 mx-auto" />
+            </div>
+          </div>
+
+          <div className="lg:col-span-2 p-6 rounded-3xl bg-white border border-slate-200/80 shadow-2xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-8 w-28 rounded-xl" />
+            </div>
+            <SkeletonTable rows={4} cols={5} />
+          </div>
+        </div>
       </div>
     );
   }

@@ -28,6 +28,7 @@ import { ActivityAssignment } from '@/lib/types';
 import { formatDateTimeWITA, formatTimeWITA } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { sendInAppNotification } from '@/lib/notifications';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function AttendancePage() {
   const { toast } = useToast();
@@ -537,9 +538,29 @@ export default function AttendancePage() {
         }
       >
         {loading ? (
-          <div className="py-12 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-            <span>Memuat penugasan presensi Anda...</span>
+          <div className="space-y-3.5 animate-fade-in">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+              >
+                <div className="space-y-2 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-5 w-24 rounded-md" />
+                    <Skeleton className="h-5 w-3/4 max-w-sm" />
+                  </div>
+                  <div className="flex gap-4">
+                    <Skeleton className="h-3.5 w-32" />
+                    <Skeleton className="h-3.5 w-40" />
+                  </div>
+                  <Skeleton className="h-4 w-48" />
+                </div>
+                <div className="flex sm:flex-col gap-2 shrink-0">
+                  <Skeleton className="h-8 w-28 rounded-xl" />
+                  <Skeleton className="h-8 w-28 rounded-xl" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : assignments.length === 0 ? (
           <div className="py-12 text-center text-slate-500 text-xs">
@@ -701,7 +722,20 @@ export default function AttendancePage() {
         </div>
 
         {loadingManual ? (
-          <div className="py-6 text-center text-xs text-slate-400">Memuat riwayat pengajuan...</div>
+          <div className="space-y-3 animate-fade-in">
+            {[1, 2].map((i) => (
+              <div key={i} className="p-3.5 sm:p-4 rounded-xl border border-slate-200 bg-white space-y-2.5">
+                <div className="flex justify-between">
+                  <div className="space-y-1.5 flex-1">
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-64" />
+                  </div>
+                  <Skeleton className="h-5 w-24 rounded-full" />
+                </div>
+                <Skeleton className="h-10 w-full rounded-lg" />
+              </div>
+            ))}
+          </div>
         ) : manualRequests.length === 0 ? (
           <div className="py-8 text-center text-slate-400 text-xs">
             Belum ada permohonan presensi manual yang diajukan.

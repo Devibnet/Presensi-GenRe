@@ -24,6 +24,7 @@ import { Activity } from '@/lib/types';
 import { formatDateTimeWITA, generateActivityCode } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { sendInAppNotification } from '@/lib/notifications';
+import { SkeletonActivityCard } from '@/components/ui/Skeleton';
 
 export default function ActivitiesPage() {
   const { toast } = useToast();
@@ -360,9 +361,10 @@ export default function ActivitiesPage() {
 
       {/* Activities Grid */}
       {loading ? (
-        <div className="py-16 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
-          <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-          <span>Memuat agenda kegiatan...</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
+          {[1, 2, 3, 4].map((n) => (
+            <SkeletonActivityCard key={n} />
+          ))}
         </div>
       ) : activities.length === 0 ? (
         <Card className="text-center py-12">

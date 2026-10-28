@@ -211,6 +211,17 @@ export function CameraQrScanner({ onScanSuccess, onClose }: CameraQrScannerProps
         {/* HTML5 QR Code Container Element */}
         <div id={readerElementId} className="w-full h-full" />
 
+        {/* Loading Camera State */}
+        {!scannerActive && !errorMessage && !isProcessing && (
+          <div className="absolute inset-0 bg-slate-950 flex flex-col items-center justify-center z-10 space-y-3 animate-fade-in">
+            <div className="relative flex items-center justify-center">
+              <div className="w-12 h-12 rounded-full border-2 border-teal-500/20 border-t-teal-400 animate-spin" />
+              <Camera className="w-5 h-5 text-teal-400 absolute" />
+            </div>
+            <span className="text-xs font-medium text-slate-300">Menghubungkan Sensor Kamera...</span>
+          </div>
+        )}
+
         {/* Viewfinder Target Frame Overlay */}
         <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
           <div className="w-48 h-48 border-2 border-teal-400/80 rounded-2xl relative shadow-[0_0_20px_rgba(20,184,166,0.3)]">

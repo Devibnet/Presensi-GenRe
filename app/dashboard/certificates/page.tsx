@@ -24,6 +24,7 @@ import { formatDateWITA, getStatusBadgeClass } from '@/lib/utils';
 import QRCode from 'qrcode';
 import { useToast } from '@/components/ui/Toast';
 import { sendInAppNotification } from '@/lib/notifications';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function CertificatesPage() {
   const { toast } = useToast();
@@ -317,11 +318,32 @@ export default function CertificatesPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-8 text-slate-500">
-                    Memuat data sertifikat...
-                  </td>
-                </tr>
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i} className="animate-fade-in border-b border-slate-100/80">
+                    <td className="px-4 py-3.5">
+                      <div className="space-y-1.5">
+                        <Skeleton className="h-4 w-36" />
+                        <Skeleton className="h-3 w-20" />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5 space-y-1.5">
+                      <Skeleton className="h-3.5 w-24" />
+                      <Skeleton className="h-3 w-28" />
+                    </td>
+                    <td className="px-4 py-3.5 text-center">
+                      <Skeleton className="h-6 w-14 mx-auto rounded-lg" />
+                    </td>
+                    <td className="px-4 py-3.5 text-center">
+                      <Skeleton className="h-6 w-24 mx-auto rounded-full" />
+                    </td>
+                    <td className="px-4 py-3.5 text-center">
+                      <Skeleton className="h-6 w-28 mx-auto rounded-lg" />
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <Skeleton className="h-8 w-24 ml-auto rounded-xl" />
+                    </td>
+                  </tr>
+                ))
               ) : filteredEvaluations.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="text-center py-8 text-slate-500">

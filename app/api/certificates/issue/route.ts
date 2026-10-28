@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { calculateMemberEvaluation } from '@/lib/evaluations';
 
 export async function POST(request: Request) {
   try {
@@ -106,45 +107,20 @@ export async function POST(request: Request) {
       if (mEval) {
         targetEvaluationId = mEval.id;
       } else {
-        // Buat baris evaluasi akhir baru untuk anggota ini
-        const { data: newEval } = await supabaseAdmin
-          .from('final_evaluations')
-          .insert({
-            period_id: periodId,
-            member_id: resolvedMemberId,
-            policy_id: policyId,
-            attendance_points: 20.00,
-            punctuality_points: 10.00,
-            task_completion_points: 10.00,
-            system_score: 40.00,
-            coordinator_score: 55.00,
-            final_score: 95.00,
-            evaluation_status: 'approved',
-            certificate_eligibility_status: 'eligible',
-            approved_by: validIssuerId,
-            approved_at: new Date().toISOString(),
-            calculated_at: new Date().toISOString(),
-          })
-          .select('id')
-          .single();
-
-        if (newEval) {
-          targetEvaluationId = newEval.id;
+        // Hitung evaluasi aktual secara proporsional dan transparan
+        const calcRes = await calculateMemberEvaluation(resolvedMemberId, periodId);
+        if (calcRes.success && calcRes.evaluationId) {
+          targetEvaluationId = calcRes.evaluationId;
+        } else {
+          const { data: fallbackEval } = await supabaseAdmin
+            .from('final_evaluations')
+            .select('id')
+            .eq('member_id', resolvedMemberId)
+            .maybeSingle();
+          if (fallbackEval) {
+            targetEvaluationId = fallbackEval.id;
+          }
         }
-      }
-    }
-
-    // F. Fallback jika masih null: ambil evaluasi pertama di DB yang belum bersertifikat
-    if (!targetEvaluationId) {
-      const { data: firstAvailEval } = await supabaseAdmin
-        .from('final_evaluations')
-        .select('id, member_id')
-        .limit(1)
-        .maybeSingle();
-
-      if (firstAvailEval) {
-        targetEvaluationId = firstAvailEval.id;
-        resolvedMemberId = firstAvailEval.member_id;
       }
     }
 

@@ -221,6 +221,15 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: updateErr.message }, { status: 500 });
       }
 
+      // Auto-recalculate system score & final evaluation secara akurat setelah check-out
+      if (user?.id && activity?.period_id) {
+        try {
+          await calculateMemberEvaluation(user.id, activity.period_id);
+        } catch (calcErr) {
+          console.warn('Evaluation auto-recalculate error on check-out:', calcErr);
+        }
+      }
+
       return NextResponse.json({
         message: isEarlyDeparture 
           ? `Check-out berhasil dicatat (Status: Mendahului sebelum ${referenceTimeText})` 

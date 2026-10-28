@@ -18,6 +18,7 @@ import {
 import { formatDateTimeWITA } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { sendInAppNotification } from '@/lib/notifications';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function ManageAttendancePage() {
   const { toast } = useToast();
@@ -174,7 +175,7 @@ export default function ManageAttendancePage() {
         }
       }
 
-      const targetMemberId = targetReq.requested_by || targetReq.member_id;
+      const targetMemberId = targetReq.activity_assignment?.member_id || targetReq.requested_by || targetReq.member_id;
       if (status === 'approved' && targetMemberId) {
         // Otomatis sinkronkan skor presensi dan evaluasi akhir ke sistem
         fetch('/api/evaluations/calculate', {
@@ -227,9 +228,27 @@ export default function ManageAttendancePage() {
 
       <Card title={`Daftar Pengajuan (${requests.length} Permohonan)`}>
         {loading ? (
-          <div className="py-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-            <span>Memuat data pengajuan manual...</span>
+          <div className="space-y-3.5 sm:space-y-4 animate-fade-in">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="p-4 sm:p-5 rounded-2xl bg-slate-50/70 border border-slate-200 flex flex-col md:flex-row md:items-start justify-between gap-4"
+              >
+                <div className="space-y-2 flex-1">
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-5 w-36" />
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-5 w-24 rounded-full" />
+                  </div>
+                  <Skeleton className="h-4 w-64" />
+                  <Skeleton className="h-4 w-full max-w-md" />
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Skeleton className="h-8 w-20 rounded-xl" />
+                  <Skeleton className="h-8 w-20 rounded-xl" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : requests.length === 0 ? (
           <div className="py-12 text-center text-slate-500 text-xs">

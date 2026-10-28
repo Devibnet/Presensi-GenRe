@@ -130,19 +130,15 @@ BEGIN
       AND aa.assignment_status = 'active'
       AND act.activity_status IN ('completed', 'ongoing');
 
-    -- Rumus Kehadiran: Jika tidak ada kegiatan ditugaskan, tidak ada penalti (diberi bobot penuh)
+    -- Rumus Kehadiran: Jika tidak ada kegiatan ditugaskan, skor sistem adalah 0.00
     IF v_total_assigned_act = 0 THEN
-        v_att_pts := 20.00;
-        v_punc_pts := 10.00;
+        v_att_pts := 0.00;
+        v_punc_pts := 0.00;
     ELSE
         v_att_pts := ROUND((v_total_present_act::numeric / v_total_assigned_act::numeric) * 20.00, 2);
         
-        -- Rumus Ketepatan Waktu: dihitung dari kegiatan yang dihadiri
-        IF v_total_present_act = 0 THEN
-            v_punc_pts := 0.00;
-        ELSE
-            v_punc_pts := ROUND((v_total_ontime_act::numeric / v_total_present_act::numeric) * 10.00, 2);
-        END IF;
+        -- Rumus Ketepatan Waktu: dihitung proporsional terhadap total kegiatan yang ditugaskan
+        v_punc_pts := ROUND((v_total_ontime_act::numeric / v_total_assigned_act::numeric) * 10.00, 2);
     END IF;
 
     -- 2. Evaluasi Penyelesaian Tugas
@@ -160,7 +156,7 @@ BEGIN
       AND t.task_status != 'cancelled';
 
     IF v_total_assigned_tsk = 0 THEN
-        v_task_pts := 10.00; -- Tidak dibebani tugas individual -> poin penuh
+        v_task_pts := 0.00;
     ELSE
         v_task_pts := ROUND((v_total_completed_tsk::numeric / v_total_assigned_tsk::numeric) * 10.00, 2);
     END IF;

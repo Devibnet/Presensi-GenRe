@@ -38,6 +38,7 @@ import ReportCharts, {
   DivisionPerformanceBarChart,
   ActivityAttendanceColumnChart,
 } from '@/components/reports/ReportCharts';
+import { Skeleton, SkeletonStats, SkeletonTable } from '@/components/ui/Skeleton';
 
 export default function ReportsPage() {
   const { toast } = useToast();
@@ -418,6 +419,57 @@ export default function ReportsPage() {
         </div>
       </div>
 
+      {loading ? (
+        <div className="space-y-6 animate-fade-in print:hidden">
+          {/* Skeleton Hub Strip */}
+          <div className="bg-slate-100/70 p-4 rounded-2xl border border-slate-200/80">
+            <Skeleton className="h-4 w-64 mb-3" />
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="p-3 bg-white rounded-xl border border-slate-200/80 space-y-2">
+                  <div className="flex justify-between">
+                    <Skeleton className="h-3 w-12" />
+                    <Skeleton className="h-3 w-3" />
+                  </div>
+                  <Skeleton className="h-5 w-20" />
+                  <Skeleton className="h-2 w-14" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Skeleton Metrics */}
+          <SkeletonStats count={4} />
+
+          {/* Skeleton Charts Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="p-6 rounded-3xl bg-white border border-slate-200/80 space-y-4">
+              <div className="flex justify-between">
+                <Skeleton className="h-5 w-48" />
+                <Skeleton className="h-4 w-20" />
+              </div>
+              <Skeleton className="h-64 w-full rounded-2xl" />
+            </div>
+            <div className="p-6 rounded-3xl bg-white border border-slate-200/80 space-y-4">
+              <div className="flex justify-between">
+                <Skeleton className="h-5 w-48" />
+                <Skeleton className="h-4 w-20" />
+              </div>
+              <Skeleton className="h-64 w-full rounded-2xl" />
+            </div>
+          </div>
+
+          {/* Skeleton Table Card */}
+          <div className="p-6 rounded-3xl bg-white border border-slate-200/80 space-y-4">
+            <div className="flex justify-between pb-3 border-b border-slate-100">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-8 w-32 rounded-xl" />
+            </div>
+            <SkeletonTable rows={5} cols={6} />
+          </div>
+        </div>
+      ) : (
+        <>
       {/* =========================================================================
           MODULE CONNECTIVITY HUB STRIP (Integrated with All Pages)
       ========================================================================= */}
@@ -1503,6 +1555,8 @@ export default function ReportsPage() {
             </table>
           </div>
         </Card>
+      )}
+      </>
       )}
 
       {/* =========================================================================

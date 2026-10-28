@@ -157,9 +157,7 @@ export async function calculateMemberEvaluation(
             approvedAtt.check_out_at ||
             isExcusedCheckin ||
             approvedAtt.check_out_status === 'normal' ||
-            approvedAtt.check_out_method === 'manual' ||
-            approvedAtt.check_out_method === 'qr' ||
-            (approvedAtt.attendance_note && approvedAtt.attendance_note.toLowerCase().includes('disetujui'))
+            approvedAtt.check_out_status === 'early_departure'
           );
 
           if (hasValidCheckout) {
@@ -170,7 +168,8 @@ export async function calculateMemberEvaluation(
     });
 
     // 5. Perhitungan Poin Skor Sistem (Maks 40 Poin)
-    // BUG FIX: Boundary clamping (0.00 hingga batas maksimum) dan pembulatan numerik presisi
+    // Formula proporsional: Setiap kegiatan yang ditugaskan memiliki bobot proporsional (20/N in, 10/N tepat, 10/N out).
+    // Jika tidak ada kegiatan ditugaskan (totalAssigned = 0), seluruh poin sistem bernilai 0.00.
     let attPoints = 0.0;
     let puncPoints = 0.0;
     let checkoutPoints = 0.0;
@@ -179,13 +178,15 @@ export async function calculateMemberEvaluation(
       // 1. Kehadiran Masuk: Maks 20.00 Poin
       attPoints = Math.min(20.0, Math.max(0.0, Number(((presentCount / totalAssigned) * 20.0).toFixed(2))));
 
-      if (presentCount > 0) {
-        // 2. Ketepatan Waktu: Maks 10.00 Poin (dari kegiatan yang dihadiri)
-        puncPoints = Math.min(10.0, Math.max(0.0, Number(((onTimeCount / presentCount) * 10.0).toFixed(2))));
+      // 2. Ketepatan Waktu: Maks 10.00 Poin (proporsional terhadap total agenda yang ditugaskan)
+      puncPoints = Math.min(10.0, Math.max(0.0, Number(((onTimeCount / totalAssigned) * 10.0).toFixed(2))));
 
-        // 3. Kelengkapan Sesi Check-Out: Maks 10.00 Poin (dari kegiatan yang dihadiri)
-        checkoutPoints = Math.min(10.0, Math.max(0.0, Number(((checkoutCount / presentCount) * 10.0).toFixed(2))));
-      }
+      // 3. Kelengkapan Sesi Check-Out: Maks 10.00 Poin (proporsional terhadap total agenda yang ditugaskan)
+      checkoutPoints = Math.min(10.0, Math.max(0.0, Number(((checkoutCount / totalAssigned) * 10.0).toFixed(2))));
+    } else {
+      attPoints = 0.0;
+      puncPoints = 0.0;
+      checkoutPoints = 0.0;
     }
 
     const systemScore = Math.min(40.0, Math.max(0.0, Number((attPoints + puncPoints + checkoutPoints).toFixed(2))));
@@ -202,10 +203,10 @@ export async function calculateMemberEvaluation(
     const finalScore = Math.min(100.0, Math.max(0.0, Number((systemScore + coordScore).toFixed(2))));
     const hasReview = review?.review_status === 'approved' && coordScore > 0;
 
-    // 7. Periksa apakah ada sertifikat yang sudah diterbitkan sebelumnya
+    // 7. Periksa apakah ada sertifikat yang sudah diterbitkan atau evaluasi telah disahkan
     const { data: existingEval } = await supabaseAdmin
       .from('final_evaluations')
-      .select('id')
+      .select('id, evaluation_status, certificate_eligibility_status, approved_by, approved_at, approval_note')
       .eq('period_id', periodId)
       .eq('member_id', memberId)
       .maybeSingle();
@@ -240,6 +241,9 @@ export async function calculateMemberEvaluation(
     } else if (certRow?.id) {
       evalStatus = 'approved';
       certEligibility = 'eligible';
+    } else if (existingEval?.evaluation_status === 'approved') {
+      evalStatus = 'approved';
+      certEligibility = finalScore >= threshold ? 'eligible' : 'ineligible';
     } else if (hasReview) {
       evalStatus = 'pending_approval';
       certEligibility = finalScore >= threshold ? 'eligible' : 'ineligible';
@@ -248,28 +252,33 @@ export async function calculateMemberEvaluation(
       certEligibility = 'pending';
     }
 
-    // 10. Upsert ke tabel final_evaluations
+    // 10. Upsert ke tabel final_evaluations (menjaga integritas data pengesahan admin)
     const nowIso = new Date().toISOString();
+    const upsertPayload: any = {
+      period_id: periodId,
+      member_id: memberId,
+      policy_id: policyId,
+      attendance_points: attPoints,
+      punctuality_points: puncPoints,
+      task_completion_points: checkoutPoints,
+      system_score: systemScore,
+      coordinator_score: coordScore,
+      final_score: finalScore,
+      evaluation_status: evalStatus,
+      certificate_eligibility_status: certEligibility,
+      calculated_at: nowIso,
+      updated_at: nowIso,
+    };
+
+    if (existingEval?.approved_by) {
+      upsertPayload.approved_by = existingEval.approved_by;
+      upsertPayload.approved_at = existingEval.approved_at;
+      upsertPayload.approval_note = existingEval.approval_note;
+    }
+
     const { data: savedEval, error: upsertErr } = await supabaseAdmin
       .from('final_evaluations')
-      .upsert(
-        {
-          period_id: periodId,
-          member_id: memberId,
-          policy_id: policyId,
-          attendance_points: attPoints,
-          punctuality_points: puncPoints,
-          task_completion_points: checkoutPoints,
-          system_score: systemScore,
-          coordinator_score: coordScore,
-          final_score: finalScore,
-          evaluation_status: evalStatus,
-          certificate_eligibility_status: certEligibility,
-          calculated_at: nowIso,
-          updated_at: nowIso,
-        },
-        { onConflict: 'period_id,member_id' }
-      )
+      .upsert(upsertPayload, { onConflict: 'period_id,member_id' })
       .select('id')
       .single();
 
@@ -308,11 +317,23 @@ export async function calculateMemberEvaluation(
 }
 
 /**
- * Menghitung ulang evaluasi dan skor sistem untuk seluruh anggota aktif
+ * Menghitung ulang evaluasi dan skor sistem untuk seluruh anggota aktif secara efisien dan cepat
  */
 export async function calculateAllMembersEvaluation(targetPeriodId?: string) {
   const supabaseAdmin = createAdminClient();
 
+  // 1. Ambil ID periode aktif
+  let periodId = targetPeriodId;
+  if (!periodId) {
+    const { data: periodData } = await supabaseAdmin
+      .from('organization_periods')
+      .select('id')
+      .eq('period_status', 'active')
+      .maybeSingle();
+    periodId = periodData?.id || '00000000-0000-0000-0000-000000000001';
+  }
+
+  // 2. Dapatkan seluruh profil anggota aktif
   const { data: members, error: mErr } = await supabaseAdmin
     .from('profiles')
     .select('id')
@@ -323,10 +344,17 @@ export async function calculateAllMembersEvaluation(targetPeriodId?: string) {
     throw mErr;
   }
 
+  const memberList = members || [];
   const results: EvaluationCalculationResult[] = [];
-  for (const m of members || []) {
-    const res = await calculateMemberEvaluation(m.id, targetPeriodId);
-    results.push(res);
+
+  // 3. Proses dalam batch terukur (concurrency 8) agar cepat, hemat memori, dan tidak memicu timeout
+  const BATCH_SIZE = 8;
+  for (let i = 0; i < memberList.length; i += BATCH_SIZE) {
+    const chunk = memberList.slice(i, i + BATCH_SIZE);
+    const chunkResults = await Promise.all(
+      chunk.map((m) => calculateMemberEvaluation(m.id, periodId))
+    );
+    results.push(...chunkResults);
   }
 
   return {

@@ -168,7 +168,7 @@ export async function GET(request: Request) {
           check_out_at
         )
       `)
-      .eq('assignment_status', 'active');
+      .neq('assignment_status', 'cancelled');
 
     const activityStatsMap = new Map<string, { assigned: number; onTime: number; late: number; attended: number; absent: number }>();
     (rawAssignments || []).forEach((asg) => {
@@ -180,11 +180,13 @@ export async function GET(request: Request) {
 
       const atts = asg.attendances as any[];
       const approvedAtt = atts?.find((a) => a.verification_status === 'approved' && a.check_in_at);
-      if (approvedAtt) {
+      const isExcused = asg.assignment_status === 'excused';
+
+      if (approvedAtt || isExcused) {
         st.attended++;
-        if (approvedAtt.check_in_status === 'on_time') {
+        if ((approvedAtt && approvedAtt.check_in_status === 'on_time') || isExcused) {
           st.onTime++;
-        } else if (approvedAtt.check_in_status === 'late') {
+        } else if (approvedAtt && approvedAtt.check_in_status === 'late') {
           st.late++;
         }
       } else {

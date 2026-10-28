@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { calculateMemberEvaluation } from '@/lib/evaluations';
 
 // Helper verifikasi hak akses Admin
 async function verifyAdmin() {
@@ -134,6 +135,13 @@ export async function POST(request: Request) {
     if (profileError) {
       console.error('Error saving profile:', profileError);
       return NextResponse.json({ error: `Gagal menyimpan profil anggota: ${profileError.message}` }, { status: 500 });
+    }
+
+    // Inisialisasi evaluasi awal panitia agar langsung tercatat dan sinkron di sistem
+    try {
+      await calculateMemberEvaluation(userId);
+    } catch (calcErr) {
+      console.warn('Gagal inisialisasi evaluasi awal panitia baru:', calcErr);
     }
 
     return NextResponse.json({

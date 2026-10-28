@@ -35,6 +35,7 @@ import { Profile, Field, SystemRole } from '@/lib/types';
 import { getRoleBadgeClass, getRoleLabel, formatDateWITA } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { sendInAppNotification } from '@/lib/notifications';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function MembersPage() {
   const { toast } = useToast();
@@ -587,9 +588,31 @@ export default function MembersPage() {
       {/* Members Table */}
       <Card title={`Daftar Panitia (${filteredMembers.length} Anggota)`}>
         {loading ? (
-          <div className="py-12 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-            <span>Memuat direktori panitia...</span>
+          <div className="p-4 space-y-3 animate-fade-in">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 gap-4"
+              >
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <Skeleton className="h-9 w-9 rounded-lg shrink-0" />
+                  <div className="space-y-1.5 flex-1 min-w-0">
+                    <Skeleton className="h-4 w-40" />
+                    <Skeleton className="h-3 w-24" />
+                  </div>
+                </div>
+                <div className="hidden sm:flex items-center gap-6 flex-1 justify-around">
+                  <Skeleton className="h-3.5 w-36" />
+                  <Skeleton className="h-3.5 w-28" />
+                  <Skeleton className="h-6 w-20 rounded-full" />
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                  <Skeleton className="h-8 w-8 rounded-lg" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : filteredMembers.length === 0 ? (
           <div className="py-12 text-center text-slate-500 text-xs">

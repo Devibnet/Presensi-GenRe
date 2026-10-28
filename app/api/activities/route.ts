@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { generateActivityCode } from '@/lib/utils';
+import { calculateAllMembersEvaluation } from '@/lib/evaluations';
 
 // -----------------------------------------------------------------------------
 // GET: Ambil Daftar Agenda Kegiatan
@@ -180,6 +181,15 @@ export async function POST(request: Request) {
       }
     }
 
+    // Sinkronkan nilai panitia jika agenda dibuat
+    if (newActivity) {
+      try {
+        await calculateAllMembersEvaluation(finalPeriodId);
+      } catch (calcErr) {
+        console.warn('Gagal sinkronisasi evaluasi setelah membuat agenda:', calcErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Agenda kegiatan berhasil dibuat!',
@@ -253,6 +263,15 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // Sinkronkan nilai panitia jika kegiatan diperbarui
+    if (updated) {
+      try {
+        await calculateAllMembersEvaluation(updated.period_id);
+      } catch (calcErr) {
+        console.warn('Gagal sinkronisasi evaluasi setelah update agenda:', calcErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Agenda kegiatan berhasil diperbarui!',
@@ -285,6 +304,15 @@ export async function DELETE(request: Request) {
     if (!id) {
       return NextResponse.json({ error: 'ID kegiatan wajib disertakan.' }, { status: 400 });
     }
+
+    // Ambil data kegiatan sebelum dihapus untuk mengetahui period_id
+    const { data: actToDelete } = await supabaseAdmin
+      .from('activities')
+      .select('id, period_id')
+      .eq('id', id)
+      .maybeSingle();
+
+    const targetPeriodId = actToDelete?.period_id;
 
     // 1. Ambil semua penugasan (assignments) kegiatan ini
     const { data: assignments } = await supabaseAdmin
@@ -353,9 +381,17 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    // 5. Hitung ulang evaluasi seluruh panitia secara otomatis
+    // Memastikan nilai kehadiran dari agenda yang dihapus segera dikembalikan (direset) ke nilai sebelum agenda tersebut ada!
+    try {
+      await calculateAllMembersEvaluation(targetPeriodId);
+    } catch (calcErr) {
+      console.warn('Gagal sinkronisasi evaluasi setelah menghapus agenda:', calcErr);
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Agenda kegiatan beserta seluruh riwayat terkait berhasil dihapus.',
+      message: 'Agenda kegiatan beserta seluruh riwayat terkait berhasil dihapus, dan nilai panitia telah disinkronkan kembali.',
     });
   } catch (err: any) {
     console.error('Error in DELETE /api/activities:', err);

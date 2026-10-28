@@ -28,6 +28,7 @@ import { ClarificationRequest, Profile, Activity, ClarificationRequestType, Clar
 import { formatDateTimeWITA, getStatusBadgeClass } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { sendInAppNotification } from '@/lib/notifications';
+import { SkeletonCardList } from '@/components/ui/Skeleton';
 
 export default function ClarificationsPage() {
   const { toast } = useToast();
@@ -538,11 +539,7 @@ export default function ClarificationsPage() {
 
       {/* LIST SANGGAHAN */}
       {loading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map(n => (
-            <div key={n} className="h-32 bg-slate-100 rounded-2xl border border-slate-200 animate-pulse" />
-          ))}
-        </div>
+        <SkeletonCardList count={3} />
       ) : filteredClarifications.length === 0 ? (
         <Card className="p-12 text-center">
           <ShieldCheck className="h-12 w-12 text-slate-300 mx-auto mb-3" />

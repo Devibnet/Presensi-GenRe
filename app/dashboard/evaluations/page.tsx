@@ -31,6 +31,7 @@ import { getStatusBadgeClass, formatTimeWITA } from '@/lib/utils';
 import Link from 'next/link';
 import { useToast } from '@/components/ui/Toast';
 import { sendInAppNotification } from '@/lib/notifications';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function EvaluationsPage() {
   const { toast } = useToast();
@@ -231,7 +232,7 @@ export default function EvaluationsPage() {
           attendances(check_in_at, check_out_at, check_in_status, check_out_status, check_out_method, attendance_note, verification_status)
         `)
         .eq('member_id', ev.member_id)
-        .eq('assignment_status', 'active');
+        .neq('assignment_status', 'cancelled');
       setDetailAttendanceLogs(asgs || []);
     } catch (err) {
       console.warn('Gagal memuat log presensi detail panitia:', err);
@@ -524,6 +525,20 @@ export default function EvaluationsPage() {
             Formula resmi: 40% Skor Kehadiran Sistem + 60% Skor Rubrik Koordinator Bidang (5 Rubrik). Ambang kelulusan sertifikat: 75.00 poin.
           </p>
         </div>
+
+        {isCoordinatorOrAdmin && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleCalculateAll}
+              disabled={calculating}
+              className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-sm transition-all duration-200 hover:shadow disabled:opacity-50 cursor-pointer active:scale-95"
+              title="Hitung ulang akumulasi skor kehadiran sistem dan evaluasi akhir seluruh panitia"
+            >
+              <Calculator className={`w-4 h-4 ${calculating ? 'animate-spin' : ''}`} />
+              <span>{calculating ? 'Menghitung Ulang...' : 'Sinkronkan & Hitung Ulang Nilai'}</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Banner Panduan & Penegakan Aturan Penilaian */}
@@ -707,8 +722,24 @@ export default function EvaluationsPage() {
         {/* Mobile View: Cards */}
         <div className="md:hidden divide-y divide-slate-100">
           {loading ? (
-            <div className="text-center py-8 text-xs text-slate-500">
-              Memuat data evaluasi kinerja...
+            <div className="p-4 space-y-3.5">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="p-4 rounded-2xl bg-white border border-slate-100 shadow-2xs space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1.5 flex-1">
+                      <Skeleton className="h-4 w-36" />
+                      <Skeleton className="h-3 w-24" />
+                      <Skeleton className="h-3 w-40" />
+                    </div>
+                    <Skeleton className="h-5 w-20 rounded-full" />
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100">
+                    <Skeleton className="h-10 rounded-lg" />
+                    <Skeleton className="h-10 rounded-lg" />
+                    <Skeleton className="h-10 rounded-lg" />
+                  </div>
+                </div>
+              ))}
             </div>
           ) : filteredEvaluations.length === 0 ? (
             <div className="text-center py-8 text-xs text-slate-500">
@@ -834,11 +865,41 @@ export default function EvaluationsPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr>
-                  <td colSpan={7} className="text-center py-8 text-slate-500">
-                    Memuat data evaluasi kinerja...
-                  </td>
-                </tr>
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={i} className="animate-fade-in border-b border-slate-100/80">
+                    <td className="px-4 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <Skeleton className="h-9 w-9 rounded-xl shrink-0" />
+                        <div className="space-y-1.5 flex-1">
+                          <Skeleton className="h-4 w-32" />
+                          <Skeleton className="h-3 w-20" />
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3.5 space-y-1.5">
+                      <Skeleton className="h-3.5 w-24" />
+                      <Skeleton className="h-3 w-28" />
+                    </td>
+                    <td className="px-4 py-3.5 text-center">
+                      <Skeleton className="h-6 w-14 mx-auto rounded-lg" />
+                    </td>
+                    <td className="px-4 py-3.5 text-center">
+                      <Skeleton className="h-6 w-14 mx-auto rounded-lg" />
+                    </td>
+                    <td className="px-4 py-3.5 text-center">
+                      <Skeleton className="h-6 w-16 mx-auto rounded-lg" />
+                    </td>
+                    <td className="px-4 py-3.5 text-center">
+                      <Skeleton className="h-6 w-24 mx-auto rounded-full" />
+                    </td>
+                    <td className="px-4 py-3.5 text-right">
+                      <div className="flex justify-end gap-1.5">
+                        <Skeleton className="h-7 w-16 rounded-lg" />
+                        <Skeleton className="h-7 w-16 rounded-lg" />
+                      </div>
+                    </td>
+                  </tr>
+                ))
               ) : filteredEvaluations.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="text-center py-8 text-slate-500">
@@ -1255,9 +1316,19 @@ export default function EvaluationsPage() {
                   Audit Log Presensi & Status Kepulangan per Agenda:
                 </span>
                 {loadingDetailLogs ? (
-                  <div className="py-3 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
-                    <div className="w-3 h-3 border-2 border-teal-600 border-t-transparent rounded-full animate-spin" />
-                    <span>Memuat rincian agenda panitia...</span>
+                  <div className="space-y-2 py-1">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 space-y-2">
+                        <div className="flex justify-between">
+                          <Skeleton className="h-4 w-36" />
+                          <Skeleton className="h-4 w-16 rounded-md" />
+                        </div>
+                        <div className="flex gap-4">
+                          <Skeleton className="h-3 w-28" />
+                          <Skeleton className="h-3 w-28" />
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ) : detailAttendanceLogs.length === 0 ? (
                   <div className="py-2.5 px-3 text-center text-[11px] text-slate-400 bg-slate-50 rounded-xl border border-dashed border-slate-200">

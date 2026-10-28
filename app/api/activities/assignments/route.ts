@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { calculateMemberEvaluation } from '@/lib/evaluations';
 
 // =============================================================================
 // DELETE: Batalkan / Hapus Penugasan Panitia dari Suatu Agenda Kegiatan
@@ -84,6 +85,8 @@ export async function DELETE(request: Request) {
       .delete()
       .eq('activity_assignment_id', assignmentId);
 
+    const targetMemberId = assignment.member_id;
+
     // 6. Hapus baris penugasan pada tabel activity_assignments
     const { error: delErr } = await supabaseAdmin
       .from('activity_assignments')
@@ -98,9 +101,18 @@ export async function DELETE(request: Request) {
       );
     }
 
+    // 7. Hitung ulang evaluasi anggota tersebut agar skor kehadiran kembali ke nilai akurat
+    if (targetMemberId) {
+      try {
+        await calculateMemberEvaluation(targetMemberId);
+      } catch (calcErr) {
+        console.warn('Gagal sinkronisasi evaluasi setelah pembatalan penugasan:', calcErr);
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Penugasan panitia beserta seluruh catatan presensi terkait berhasil dibatalkan.',
+      message: 'Penugasan panitia beserta seluruh catatan presensi terkait berhasil dibatalkan, dan nilai telah dihitung ulang.',
     });
   } catch (err: any) {
     console.error('Error in DELETE /api/activities/assignments:', err);
