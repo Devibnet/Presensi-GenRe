@@ -88,6 +88,8 @@ export function getStatusBadgeClass(status: string): string {
     case 'issued':
     case 'resolved':
       return 'bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold';
+    case 'excused':
+      return 'bg-purple-50 text-purple-700 border border-purple-200 font-semibold';
     case 'early_departure':
       return 'bg-amber-50 text-amber-800 border border-amber-300 font-semibold';
     case 'pending':

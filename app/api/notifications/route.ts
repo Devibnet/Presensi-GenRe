@@ -195,16 +195,40 @@ export async function PATCH(request: Request) {
 // -----------------------------------------------------------------------------
 export async function DELETE(request: Request) {
   try {
+    const supabase = await createClient();
     const supabaseAdmin = createAdminClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    const clearAllUserId = searchParams.get('clearAllUserId');
+    const clearAll = searchParams.get('clearAll') === 'true' || searchParams.get('clearAllUserId') !== null;
+    const customUserId = searchParams.get('clearAllUserId');
 
-    if (clearAllUserId) {
-      await supabaseAdmin
-        .from('notifications')
-        .delete()
-        .eq('user_id', clearAllUserId);
+    if (clearAll) {
+      let targetUserId = user?.id || (customUserId && customUserId !== 'all' ? customUserId : null);
+
+      if (!targetUserId) {
+        // Fallback default admin jika mode demo / session belum terbaca
+        const { data: firstAdmin } = await supabaseAdmin
+          .from('profiles')
+          .select('id')
+          .eq('system_role', 'admin')
+          .limit(1)
+          .maybeSingle();
+        targetUserId = firstAdmin?.id;
+      }
+
+      if (targetUserId) {
+        const { error: delError } = await supabaseAdmin
+          .from('notifications')
+          .delete()
+          .eq('user_id', targetUserId);
+
+        if (delError) {
+          console.error('Error clearing notifications for user:', delError);
+          return NextResponse.json({ error: delError.message }, { status: 500 });
+        }
+      }
 
       return NextResponse.json({ success: true, message: 'Seluruh notifikasi berhasil dibersihkan.' });
     }

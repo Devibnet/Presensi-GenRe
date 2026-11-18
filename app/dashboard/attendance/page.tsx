@@ -45,7 +45,7 @@ export default function AttendancePage() {
   // Manual Request Modal State: Create
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [selectedAssignmentId, setSelectedAssignmentId] = useState('');
-  const [attendanceType, setAttendanceType] = useState<'check_in' | 'check_out' | 'both'>('check_in');
+  const [attendanceType, setAttendanceType] = useState<'check_in' | 'check_out' | 'both' | 'excused'>('check_in');
   const [claimedTime, setClaimedTime] = useState('');
   const [manualReason, setManualReason] = useState('');
   const [evidenceUrl, setEvidenceUrl] = useState('');
@@ -89,7 +89,7 @@ export default function AttendancePage() {
         .from('activity_assignments')
         .select('*, activity:activities(*), attendance:attendances(*)')
         .eq('member_id', user.id)
-        .eq('assignment_status', 'active')
+        .in('assignment_status', ['active', 'excused'])
         .order('created_at', { ascending: false });
 
       if (data) setAssignments(data as any);
@@ -213,7 +213,7 @@ export default function AttendancePage() {
     }
   };
 
-  // Pengajuan Presensi Manual jika Kamera Bermasalah
+  // Pengajuan Presensi Manual atau Izin / Sakit
   const handleSubmitManualRequest = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmittingManual(true);
@@ -221,14 +221,19 @@ export default function AttendancePage() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
 
+      const isExcuse = attendanceType === 'excused';
+      const effectiveType = isExcuse ? 'check_in' : attendanceType;
+      const effectiveTime = isExcuse ? (claimedTime || new Date().toISOString()) : claimedTime;
+      const formattedReason = isExcuse ? `[IZIN / DISPENSASI] ${manualReason.trim()}` : manualReason.trim();
+
       const res = await fetch('/api/attendance/manual', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           assignmentId: selectedAssignmentId,
-          attendanceType,
-          claimedTime,
-          reason: manualReason.trim(),
+          attendanceType: effectiveType,
+          claimedTime: effectiveTime,
+          reason: formattedReason,
           evidenceUrl: evidenceUrl.trim() || null,
           requestedBy: user?.id,
         }),
@@ -238,14 +243,18 @@ export default function AttendancePage() {
       if (!res.ok) throw new Error(result.error || 'Gagal mengirim pengajuan.');
 
       toast.success(
-        'Permohonan Presensi Terkirim',
-        'Permohonan presensi manual Anda berhasil diajukan dan sedang menunggu verifikasi koordinator.'
+        isExcuse ? 'Permohonan Izin Terkirim' : 'Permohonan Presensi Terkirim',
+        isExcuse
+          ? 'Permohonan izin Anda berhasil diajukan dan sedang menunggu persetujuan koordinator.'
+          : 'Permohonan presensi manual Anda berhasil diajukan dan sedang menunggu verifikasi koordinator.'
       );
 
       // Kirim notifikasi in-app
       sendInAppNotification({
-        title: 'Permohonan Presensi Manual Baru',
-        message: `Pengajuan presensi manual baru telah dikirimkan. Alasan: "${manualReason.trim().slice(0, 45)}..."`,
+        title: isExcuse ? 'Permohonan Izin / Sakit Baru' : 'Permohonan Presensi Manual Baru',
+        message: isExcuse
+          ? `Pengajuan izin tidak hadir baru telah dikirimkan. Alasan: "${manualReason.trim().slice(0, 45)}..."`
+          : `Pengajuan presensi manual baru telah dikirimkan. Alasan: "${manualReason.trim().slice(0, 45)}..."`,
         notificationType: 'attendance',
         actionUrl: '/dashboard/attendance/manage',
         broadcastToAll: true,
@@ -590,28 +599,32 @@ export default function AttendancePage() {
                       <span className="text-xs font-mono font-bold text-teal-700 px-2.5 py-0.5 rounded bg-teal-50 border border-teal-200">
                         {act?.activity_code}
                       </span>
-                      {isCheckedIn ? (
+                      {item.assignment_status === 'excused' ? (
+                        <Badge status="excused" label="Izin / Dispensasi" />
+                      ) : isCheckedIn ? (
                         <Badge status={att?.check_in_status || 'on_time'} />
                       ) : (
                         <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-semibold">
                           Belum Hadir
                         </span>
                       )}
-                      {isCheckedOut ? (
-                        <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-semibold border ${
-                          att?.check_out_status === 'early_departure'
-                            ? 'bg-amber-50 text-amber-800 border-amber-300'
-                            : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                        }`}>
-                          {att?.check_out_status === 'early_departure'
-                            ? 'Pulang Mendahului'
-                            : 'Pulang Sesuai Jadwal'}
-                        </span>
-                      ) : isMissedCheckout ? (
-                        <span className="text-[10px] px-2.5 py-0.5 rounded-full font-semibold border bg-rose-50 text-rose-700 border-rose-200">
-                          Tidak Check-out (Batas Waktu Berakhir)
-                        </span>
-                      ) : null}
+                      {item.assignment_status !== 'excused' && (
+                        isCheckedOut ? (
+                          <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-semibold border ${
+                            att?.check_out_status === 'early_departure'
+                              ? 'bg-amber-50 text-amber-800 border-amber-300'
+                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                          }`}>
+                            {att?.check_out_status === 'early_departure'
+                              ? 'Pulang Mendahului'
+                              : 'Pulang Sesuai Jadwal'}
+                          </span>
+                        ) : isMissedCheckout ? (
+                          <span className="text-[10px] px-2.5 py-0.5 rounded-full font-semibold border bg-rose-50 text-rose-700 border-rose-200">
+                            Tidak Check-out (Batas Waktu Berakhir)
+                          </span>
+                        ) : null
+                      )}
                     </div>
 
                     <h3 className="text-sm sm:text-base font-bold text-slate-900">{act?.activity_name}</h3>
@@ -628,8 +641,21 @@ export default function AttendancePage() {
                       </span>
                     </div>
 
+                    {/* Banner Keterangan Dispensasi Izin */}
+                    {item.assignment_status === 'excused' && (
+                      <div className="mt-2 text-xs text-purple-800 bg-purple-50 border border-purple-200 px-3 py-2 rounded-xl flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 text-purple-600 mt-0.5" />
+                        <div>
+                          <span className="font-bold block text-purple-950">Dispensasi Izin Resmi Disetujui</span>
+                          <span className="text-purple-700">
+                            Alasan: {item.cancellation_reason || 'Izin ketidakhadiran'}. Hak nilai dan sertifikat Anda tidak dipotong.
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Rincian Waktu Hadir */}
-                    {(isCheckedIn || isCheckedOut) && (
+                    {item.assignment_status !== 'excused' && (isCheckedIn || isCheckedOut) && (
                       <div className="mt-2 pt-2 border-t border-slate-200/60 flex flex-wrap gap-4 text-xs font-mono text-slate-600">
                         {isCheckedIn && (
                           <span className="text-emerald-700 font-semibold">
@@ -650,18 +676,37 @@ export default function AttendancePage() {
                   </div>
 
                   {/* Tombol Aksi Mandiri */}
-                  <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
-                    {!isCheckedIn ? (
-                      <button
-                        onClick={() => {
-                          setActiveScanAction('check_in');
-                          setIsCameraOpen(true);
-                        }}
-                        className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-                      >
-                        <Camera className="w-4 h-4" />
-                        <span>Scan Kamera</span>
-                      </button>
+                  <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 flex-wrap">
+                    {item.assignment_status === 'excused' ? (
+                      <div className="px-3.5 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-purple-700 text-xs font-semibold flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-purple-600" />
+                        <span>Dispensasi Diterima</span>
+                      </div>
+                    ) : !isCheckedIn ? (
+                      <>
+                        <button
+                          onClick={() => {
+                            setActiveScanAction('check_in');
+                            setIsCameraOpen(true);
+                          }}
+                          className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Camera className="w-4 h-4" />
+                          <span>Scan Kamera</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedAssignmentId(item.id);
+                            setAttendanceType('excused');
+                            setClaimedTime(new Date().toISOString().slice(0, 16));
+                            setIsManualModalOpen(true);
+                          }}
+                          className="px-3 py-2 rounded-xl text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-all flex items-center gap-1 cursor-pointer"
+                          title="Ajukan izin tidak hadir (sakit / keperluan mendesak)"
+                        >
+                          <span>Ajukan Izin</span>
+                        </button>
+                      </>
                     ) : !isCheckedOut ? (
                       isMissedCheckout ? (
                         <button
@@ -809,13 +854,17 @@ export default function AttendancePage() {
       </Card>
 
       {/* ============================================================================== */}
-      {/* MODAL: AJUKAN PRESENSI MANUAL */}
+      {/* MODAL: AJUKAN PRESENSI MANUAL ATAU IZIN / SAKIT */}
       {/* ============================================================================== */}
       <Modal
         isOpen={isManualModalOpen}
         onClose={() => setIsManualModalOpen(false)}
-        title="Form Pengajuan Presensi Manual"
-        description="Gunakan formulir ini jika Anda mengalami kendala kamera atau kendala jaringan di lokasi acara."
+        title={attendanceType === 'excused' ? 'Form Pengajuan Izin / Sakit (Dispensasi)' : 'Form Pengajuan Presensi Manual'}
+        description={
+          attendanceType === 'excused'
+            ? 'Ajukan dispensasi tidak hadir resmi. Setelah disetujui koordinator, skor kehadiran dan hak sertifikat Anda tidak akan dipotong.'
+            : 'Gunakan formulir ini jika Anda hadir namun mengalami kendala kamera atau jaringan saat memindai QR code.'
+        }
       >
         <form onSubmit={handleSubmitManualRequest} className="space-y-4 text-xs">
           <div>
@@ -827,43 +876,52 @@ export default function AttendancePage() {
             >
               {assignments.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.activity?.activity_code} - {item.activity?.activity_name}
+                  {item.activity?.activity_code} - {item.activity?.activity_name} {item.assignment_status === 'excused' ? '(Sudah Izin)' : ''}
                 </option>
               ))}
             </select>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className={`grid grid-cols-1 ${attendanceType === 'excused' ? 'sm:grid-cols-1' : 'sm:grid-cols-2'} gap-4`}>
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">Jenis Presensi *</label>
+              <label className="block font-semibold text-slate-700 mb-1">Jenis Pengajuan *</label>
               <select
                 value={attendanceType}
                 onChange={(e) => setAttendanceType(e.target.value as any)}
-                className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
+                className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500 font-medium"
               >
-                <option value="check_in">Check-in (Kedatangan)</option>
-                <option value="check_out">Check-out (Kepulangan)</option>
+                <option value="check_in">Check-in (Kedatangan Manual)</option>
+                <option value="check_out">Check-out (Kepulangan Manual)</option>
                 <option value="both">Keduanya (Check-in & Check-out)</option>
+                <option value="excused">🟣 Izin / Sakit (Dispensasi Ketidakhadiran)</option>
               </select>
             </div>
-            <div>
-              <label className="block font-semibold text-slate-700 mb-1">Waktu Kehadiran Sebenarnya *</label>
-              <input
-                type="datetime-local"
-                required
-                value={claimedTime}
-                onChange={(e) => setClaimedTime(e.target.value)}
-                className="w-full p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
-              />
-            </div>
+            {attendanceType !== 'excused' && (
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Waktu Kehadiran Sebenarnya *</label>
+                <input
+                  type="datetime-local"
+                  required
+                  value={claimedTime}
+                  onChange={(e) => setClaimedTime(e.target.value)}
+                  className="w-full p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
+                />
+              </div>
+            )}
           </div>
 
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Alasan Kendala *</label>
+            <label className="block font-semibold text-slate-700 mb-1">
+              {attendanceType === 'excused' ? 'Alasan Izin / Sakit *' : 'Alasan Kendala *'}
+            </label>
             <textarea
               required
               rows={3}
-              placeholder="Contoh: Kamera smartphone blank saat scan di meja registrasi, hadir bertugas di bagian sound system..."
+              placeholder={
+                attendanceType === 'excused'
+                  ? 'Jelaskan alasan izin, contoh: Sakit demam bed rest, jadwal kuliah/ujian bentrok, dinas luar kota...'
+                  : 'Contoh: Kamera smartphone blank saat scan di meja registrasi, hadir bertugas di bagian sound system...'
+              }
               value={manualReason}
               onChange={(e) => setManualReason(e.target.value)}
               className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-teal-500"
@@ -871,10 +929,16 @@ export default function AttendancePage() {
           </div>
 
           <div>
-            <label className="block font-semibold text-slate-700 mb-1">Tautan Bukti Kehadiran (Opsional)</label>
+            <label className="block font-semibold text-slate-700 mb-1">
+              {attendanceType === 'excused' ? 'Tautan Surat Izin / Bukti Pendukung (Opsional)' : 'Tautan Bukti Kehadiran (Opsional)'}
+            </label>
             <input
               type="url"
-              placeholder="https://drive.google.com/... (Foto kegiatan / dokumentasi)"
+              placeholder={
+                attendanceType === 'excused'
+                  ? 'https://drive.google.com/... (Foto surat dokter / surat izin / bukti chat)'
+                  : 'https://drive.google.com/... (Foto kegiatan / dokumentasi)'
+              }
               value={evidenceUrl}
               onChange={(e) => setEvidenceUrl(e.target.value)}
               className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-teal-500"
@@ -892,9 +956,17 @@ export default function AttendancePage() {
             <button
               type="submit"
               disabled={submittingManual}
-              className="px-5 py-2 rounded-xl font-semibold text-white bg-teal-600 hover:bg-teal-500 disabled:opacity-50 transition-colors shadow-sm"
+              className={`px-5 py-2 rounded-xl font-semibold text-white disabled:opacity-50 transition-colors shadow-sm ${
+                attendanceType === 'excused'
+                  ? 'bg-purple-600 hover:bg-purple-500'
+                  : 'bg-teal-600 hover:bg-teal-500'
+              }`}
             >
-              {submittingManual ? 'Mengirim...' : 'Kirim Permohonan'}
+              {submittingManual
+                ? 'Mengirim...'
+                : attendanceType === 'excused'
+                ? 'Kirim Permohonan Izin'
+                : 'Kirim Permohonan Presensi'}
             </button>
           </div>
         </form>

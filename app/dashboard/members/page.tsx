@@ -14,6 +14,7 @@ import {
   Edit3,
   Trash2,
   Eye,
+  EyeOff,
   Search, 
   Filter, 
   CheckCircle2, 
@@ -27,10 +28,15 @@ import {
   ExternalLink,
   Key,
   ShieldCheck,
-  Calendar
+  ShieldAlert,
+  Calendar,
+  Lock,
+  FileText
 } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { Profile, Field, SystemRole } from '@/lib/types';
 import { getRoleBadgeClass, getRoleLabel, formatDateWITA } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
@@ -46,6 +52,7 @@ export default function MembersPage() {
   const [selectedField, setSelectedField] = useState('all');
   const [roleFilter, setRoleFilter] = useState('all');
   const [userRole, setUserRole] = useState<SystemRole>('member');
+  const [userPosition, setUserPosition] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
@@ -106,6 +113,18 @@ export default function MembersPage() {
   const [importLoading, setImportLoading] = useState(false);
   const [importResult, setImportResult] = useState<any | null>(null);
 
+  // ---------------------------------------------------------------------------
+  // Modal State: Ekspor Kredensial Panitia (Excel & PDF)
+  // ---------------------------------------------------------------------------
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'excel' | 'pdf'>('excel');
+  const [exportFieldId, setExportFieldId] = useState<string>('all');
+  const [exportRoleFilter, setExportRoleFilter] = useState<string>('all');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+  const [exportError, setExportError] = useState('');
+
   const supabase = createClient();
 
   useEffect(() => {
@@ -121,11 +140,12 @@ export default function MembersPage() {
         setCurrentUserId(user.id);
         const { data: currentProfile } = await supabase
           .from('profiles')
-          .select('system_role')
+          .select('system_role, organization_position')
           .eq('id', user.id)
           .single();
         if (currentProfile) {
           setUserRole(currentProfile.system_role as SystemRole);
+          setUserPosition(currentProfile.organization_position || '');
         }
       }
 
@@ -466,6 +486,223 @@ export default function MembersPage() {
     document.body.removeChild(link);
   };
 
+  // ---------------------------------------------------------------------------
+  // Handler: Ekspor Kredensial Panitia (Excel & PDF Resmi dengan Sudo Mode)
+  // ---------------------------------------------------------------------------
+  const handleExportCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setExportError('');
+
+    if (!adminPassword.trim()) {
+      setExportError('Silakan masukkan kode otorisasi keamanan.');
+      return;
+    }
+
+    setExportLoading(true);
+
+    try {
+      const res = await fetch('/api/members/export-credentials', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          security_code: adminPassword.trim(),
+          field_id: exportFieldId,
+          role_filter: exportRoleFilter,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Gagal memproses ekspor data kredensial.');
+      }
+
+      const { members: exportMembers, exported_at, exported_by, total } = data;
+
+      if (!exportMembers || exportMembers.length === 0) {
+        toast.info('Data Kosong', 'Tidak ada data anggota panitia yang sesuai dengan filter yang dipilih.');
+        setExportLoading(false);
+        return;
+      }
+
+      const dateStr = new Date().toISOString().split('T')[0];
+
+      if (exportFormat === 'excel') {
+        // ---------------------------------------------------------------------
+        // 1. Ekspor Format EXCEL (.xlsx)
+        // ---------------------------------------------------------------------
+        const excelRows = exportMembers.map((m: any, index: number) => ({
+          'No': index + 1,
+          'Kode Anggota': m.member_code,
+          'Nama Lengkap Panitia': m.full_name,
+          'Email Resmi (Login)': m.email,
+          'Password Awal / Akun': m.password,
+          'Divisi / Bidang': m.field_name,
+          'Jabatan Kepanitiaan': m.organization_position,
+          'Hak Akses (Role)': m.system_role === 'admin' ? 'Admin' : m.system_role === 'coordinator' ? 'Koordinator' : 'Anggota',
+          'Status Akun': m.account_status === 'active' ? 'Aktif' : 'Nonaktif',
+          'Nomor Telepon / WA': m.phone_number || '-',
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(excelRows);
+        ws['!cols'] = [
+          { wch: 6 },
+          { wch: 16 },
+          { wch: 32 },
+          { wch: 36 },
+          { wch: 32 },
+          { wch: 26 },
+          { wch: 28 },
+          { wch: 16 },
+          { wch: 14 },
+          { wch: 20 },
+        ];
+
+        // Sheet Catatan & Kebijakan Keamanan
+        const noticeRows = [
+          { 'PANDUAN & KEBIJAKAN KEAMANAN KREDENSIAL PANITIA GENRE 2026': '1. DOKUMEN RAHASIA: Daftar kredensial ini hanya boleh diakses oleh Administrator/BPH untuk keperluan pembagian akun resmi.' },
+          { 'PANDUAN & KEBIJAKAN KEAMANAN KREDENSIAL PANITIA GENRE 2026': '2. KEWAJIBAN GANTI PASSWORD: Masing-masing anggota panitia wajib mengganti password saat login pertama kali di aplikasi portal presensi.' },
+          { 'PANDUAN & KEBIJAKAN KEAMANAN KREDENSIAL PANITIA GENRE 2026': '3. PRIVASI ANGGOTA: Akun yang bertanda "[Telah Diubah Mandiri oleh Panitia]" menunjukkan anggota telah mengamankan password pribadinya via enkripsi bcrypt.' },
+          { 'PANDUAN & KEBIJAKAN KEAMANAN KREDENSIAL PANITIA GENRE 2026': `4. JEJAK AUDIT: Diekspor oleh ${exported_by.name} (${exported_by.email}) pada ${new Date(exported_at).toLocaleString('id-ID', { timeZone: 'Asia/Makassar' })} WITA.` },
+        ];
+        const wsNotice = XLSX.utils.json_to_sheet(noticeRows);
+        wsNotice['!cols'] = [{ wch: 120 }];
+
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Kredensial Panitia');
+        XLSX.utils.book_append_sheet(wb, wsNotice, 'Ketentuan Keamanan');
+
+        XLSX.writeFile(wb, `Kredensial_Akun_Panitia_GenRe_${dateStr}.xlsx`);
+        toast.success('Ekspor Excel Berhasil', `Berhasil mengunduh kredensial ${total} akun panitia.`);
+      } else {
+        // ---------------------------------------------------------------------
+        // 2. Ekspor Format PDF Resmi (.pdf)
+        // ---------------------------------------------------------------------
+        const doc = new jsPDF({
+          orientation: 'landscape',
+          unit: 'mm',
+          format: 'a4',
+        });
+
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+
+        // Decorative Header Bar
+        doc.setFillColor(13, 148, 136); // Teal-600
+        doc.rect(0, 0, pageWidth, 5, 'F');
+
+        // Organization Header & Title
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(14);
+        doc.setTextColor(15, 23, 42); // Slate-900
+        doc.text('PEMILIHAN DUTA GENRE KABUPATEN BULELENG 2026', 14, 15);
+
+        doc.setFontSize(10);
+        doc.setTextColor(13, 148, 136); // Teal-600
+        doc.text('DAFTAR KREDENSIAL AKUN RESMI PANITIA & AKSES PRESENSI', 14, 21);
+
+        // Security Classification Badge (Right aligned)
+        doc.setFillColor(254, 242, 242); // Rose-50
+        doc.setDrawColor(244, 63, 94); // Rose-500
+        doc.roundedRect(pageWidth - 75, 10, 61, 8, 2, 2, 'FD');
+        doc.setFontSize(8);
+        doc.setTextColor(190, 18, 60); // Rose-700
+        doc.text('DOKUMEN RAHASIA (CONFIDENTIAL)', pageWidth - 72, 15);
+
+        // Metadata Subheader
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        doc.setTextColor(100, 116, 139); // Slate-500
+        const exportDateFormatted = new Date(exported_at).toLocaleString('id-ID', {
+          dateStyle: 'full',
+          timeStyle: 'medium',
+          timeZone: 'Asia/Makassar',
+        }) + ' WITA';
+
+        doc.text(`Waktu Ekspor: ${exportDateFormatted}  |  Total: ${total} Akun Panitia`, 14, 28);
+        doc.text(`Diekspor Oleh: ${exported_by.name} (${exported_by.email})`, pageWidth - 14, 28, { align: 'right' });
+
+        // Divider Line
+        doc.setDrawColor(226, 232, 240); // Slate-200
+        doc.setLineWidth(0.5);
+        doc.line(14, 31, pageWidth - 14, 31);
+
+        // Table Data
+        const tableData = exportMembers.map((m: any, idx: number) => [
+          idx + 1,
+          m.member_code,
+          m.full_name,
+          m.email,
+          m.password,
+          m.field_name,
+          m.organization_position,
+          m.system_role === 'admin' ? 'Admin' : m.system_role === 'coordinator' ? 'Koordinator' : 'Anggota',
+          m.account_status === 'active' ? 'Aktif' : 'Nonaktif',
+        ]);
+
+        autoTable(doc, {
+          startY: 34,
+          head: [['No', 'Kode', 'Nama Lengkap Panitia', 'Email Resmi Login', 'Password Awal / Akun', 'Divisi', 'Jabatan', 'Role', 'Status']],
+          body: tableData,
+          theme: 'striped',
+          styles: {
+            fontSize: 7.5,
+            cellPadding: 2,
+            textColor: [30, 41, 59],
+            valign: 'middle',
+          },
+          headStyles: {
+            fillColor: [13, 148, 136],
+            textColor: 255,
+            fontSize: 8,
+            fontStyle: 'bold',
+            halign: 'center',
+          },
+          alternateRowStyles: {
+            fillColor: [248, 250, 252],
+          },
+          columnStyles: {
+            0: { halign: 'center', cellWidth: 10 },
+            1: { halign: 'center', fontStyle: 'bold', cellWidth: 24 },
+            2: { cellWidth: 46 },
+            3: { cellWidth: 48 },
+            4: { fontStyle: 'bold', cellWidth: 44, textColor: [15, 23, 42] },
+            5: { cellWidth: 34 },
+            6: { cellWidth: 34 },
+            7: { halign: 'center', cellWidth: 18 },
+            8: { halign: 'center', cellWidth: 14 },
+          },
+          didDrawPage: (hookData) => {
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(7);
+            doc.setTextColor(148, 163, 184); // Slate-400
+            doc.text(
+              'PERINGATAN KEAMANAN: Dokumen ini memuat data rahasia. Anggota panitia wajib mengganti password saat pertama kali login. Dilarang membagikan dokumen ini kepada pihak di luar kepanitiaan.',
+              14,
+              pageHeight - 7
+            );
+            doc.text(
+              `Halaman ${hookData.pageNumber}`,
+              pageWidth - 14,
+              pageHeight - 7,
+              { align: 'right' }
+            );
+          },
+        });
+
+        doc.save(`Kredensial_Akun_Panitia_GenRe_${dateStr}.pdf`);
+        toast.success('Ekspor PDF Berhasil', `Berhasil mengunduh dokumen resmi kredensial ${total} akun panitia.`);
+      }
+
+      setAdminPassword('');
+      setIsExportModalOpen(false);
+    } catch (err: any) {
+      setExportError(err.message || 'Terjadi kesalahan saat memproses ekspor.');
+      toast.error('Gagal Ekspor Kredensial', err.message);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
   // Filtered members list
   const filteredMembers = members.filter((m) => {
     const matchesSearch =
@@ -476,6 +713,10 @@ export default function MembersPage() {
     const matchesRole = roleFilter === 'all' || m.system_role === roleFilter;
     return matchesSearch && matchesField && matchesRole;
   });
+
+  const isPenanggungJawab = 
+    userRole === 'admin' && 
+    userPosition.toLowerCase().includes('penanggung jawab');
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -532,6 +773,23 @@ export default function MembersPage() {
               <FileSpreadsheet className="w-4 h-4 text-slate-500" />
               <span>Impor Cepat</span>
             </button>
+
+            {isPenanggungJawab && (
+              <button
+                onClick={() => {
+                  setIsExportModalOpen(true);
+                  setAdminPassword('');
+                  setExportError('');
+                  setExportFieldId(selectedField);
+                  setExportRoleFilter(roleFilter);
+                }}
+                className="px-3.5 py-2.5 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 hover:border-teal-400 hover:text-teal-700 transition-all flex items-center gap-2 cursor-pointer shadow-xs active:scale-95"
+                title="Ekspor Kredensial Akun Panitia (Khusus Penanggung Jawab)"
+              >
+                <Download className="w-4 h-4 text-teal-600" />
+                <span>Ekspor Kredensial</span>
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -1503,6 +1761,197 @@ export default function MembersPage() {
             </button>
           </div>
         </div>
+      </Modal>
+
+      {/* ============================================================================== */}
+      {/* MODAL: EKSPOR KREDENSIAL AKUN PANITIA (EXCEL & PDF RESMI) DENGAN KODE OTORISASI */}
+      {/* ============================================================================== */}
+      <Modal
+        isOpen={isExportModalOpen}
+        onClose={() => {
+          if (!exportLoading) {
+            setIsExportModalOpen(false);
+            setAdminPassword('');
+            setExportError('');
+          }
+        }}
+        title="Ekspor Kredensial Akun Panitia (Khusus Penanggung Jawab)"
+        description="Akses Terbatas: Unduh daftar akun panitia lengkap dengan nama, email, dan password untuk keperluan distribusi akun resmi."
+        maxWidth="max-w-xl"
+      >
+        <form onSubmit={handleExportCredentials} className="space-y-4 text-xs">
+          {/* Security Banner */}
+          <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 space-y-1.5">
+            <div className="flex items-center gap-2 font-bold text-amber-950">
+              <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>Klasifikasi: Dokumen Sensitif & Rahasia</span>
+            </div>
+            <p className="text-[11px] text-amber-800 leading-relaxed">
+              Dokumen ini memuat data akun login resmi (Email dan Password). Hanya gunakan dokumen ini untuk keperluan pembagian akun kepada panitia terkait. Masing-masing panitia wajib mengganti password saat login pertama kali.
+            </p>
+          </div>
+
+          {/* Pilihan Format Ekspor */}
+          <div>
+            <label className="block font-semibold text-slate-700 mb-2">
+              Pilih Format Dokumen *
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label
+                className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${
+                  exportFormat === 'excel'
+                    ? 'border-emerald-500 bg-emerald-50/50 text-emerald-950 shadow-xs ring-1 ring-emerald-500/30'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="exportFormat"
+                  value="excel"
+                  checked={exportFormat === 'excel'}
+                  onChange={() => setExportFormat('excel')}
+                  className="sr-only"
+                />
+                <FileSpreadsheet className={`w-5 h-5 shrink-0 ${exportFormat === 'excel' ? 'text-emerald-600' : 'text-slate-400'}`} />
+                <div className="min-w-0">
+                  <span className="font-bold block text-xs">Excel (.xlsx)</span>
+                  <span className="text-[10px] text-slate-500 block truncate">Format spreadsheet lengkap</span>
+                </div>
+              </label>
+
+              <label
+                className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${
+                  exportFormat === 'pdf'
+                    ? 'border-rose-500 bg-rose-50/50 text-rose-950 shadow-xs ring-1 ring-rose-500/30'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="exportFormat"
+                  value="pdf"
+                  checked={exportFormat === 'pdf'}
+                  onChange={() => setExportFormat('pdf')}
+                  className="sr-only"
+                />
+                <FileText className={`w-5 h-5 shrink-0 ${exportFormat === 'pdf' ? 'text-rose-600' : 'text-slate-400'}`} />
+                <div className="min-w-0">
+                  <span className="font-bold block text-xs">PDF Resmi (.pdf)</span>
+                  <span className="text-[10px] text-slate-500 block truncate">Kop surat & watermark</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Opsi Filter Ekspor */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Filter Divisi</label>
+              <select
+                value={exportFieldId}
+                onChange={(e) => setExportFieldId(e.target.value)}
+                className="w-full p-2 rounded-lg bg-white border border-slate-300 text-slate-900 focus:outline-none focus:border-teal-500 text-xs"
+              >
+                <option value="all">Seluruh Divisi ({members.length})</option>
+                {fields.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.field_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">Filter Role</label>
+              <select
+                value={exportRoleFilter}
+                onChange={(e) => setExportRoleFilter(e.target.value)}
+                className="w-full p-2 rounded-lg bg-white border border-slate-300 text-slate-900 focus:outline-none focus:border-teal-500 text-xs"
+              >
+                <option value="all">Seluruh Role</option>
+                <option value="member">Hanya Anggota</option>
+                <option value="coordinator">Hanya Koordinator</option>
+                <option value="admin">Hanya Admin</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Otorisasi Kode Keamanan */}
+          <div className="pt-2">
+            <label className="block font-semibold text-slate-900 mb-1 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Lock className="w-3.5 h-3.5 text-teal-600" />
+                <span>Kode Otorisasi Keamanan *</span>
+              </span>
+              <span className="text-[10px] text-slate-400 font-normal">Verifikasi PIN Rahasia</span>
+            </label>
+            <p className="text-[11px] text-slate-500 mb-2">
+              Masukkan kode otorisasi keamanan untuk mengonfirmasi pengunduhan data kredensial:
+            </p>
+            <div className="relative flex items-center">
+              <input
+                type={showAdminPassword ? 'text' : 'password'}
+                required
+                maxLength={10}
+                placeholder="••••••"
+                value={adminPassword}
+                onChange={(e) => {
+                  setAdminPassword(e.target.value);
+                  setExportError('');
+                }}
+                className="w-full p-2.5 pr-10 rounded-xl bg-white border border-slate-300 text-slate-900 placeholder-slate-400 focus:outline-none focus:border-teal-500 font-mono font-bold tracking-widest text-center text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => setShowAdminPassword(!showAdminPassword)}
+                className="absolute right-3 text-slate-400 hover:text-slate-600 cursor-pointer"
+                title={showAdminPassword ? 'Sembunyikan kode' : 'Tampilkan kode'}
+              >
+                {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Error Banner */}
+          {exportError && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+              <span>{exportError}</span>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex justify-end gap-3 pt-3.5 pb-2 border-t border-slate-100 sticky -bottom-4 sm:-bottom-5 bg-white/95 backdrop-blur-sm -mx-5 sm:-mx-6 px-5 sm:px-6 z-10 mt-4">
+            <button
+              type="button"
+              disabled={exportLoading}
+              onClick={() => {
+                setIsExportModalOpen(false);
+                setAdminPassword('');
+                setExportError('');
+              }}
+              className="px-4 py-2 rounded-xl font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="submit"
+              disabled={exportLoading || !adminPassword.trim()}
+              className="px-5 py-2 rounded-xl font-bold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2 shadow-sm shadow-teal-600/20 cursor-pointer transition-all active:scale-95"
+            >
+              {exportLoading ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Memverifikasi & Mengunduh...</span>
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4" />
+                  <span>Verifikasi & Unduh {exportFormat === 'excel' ? 'Excel' : 'PDF'}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

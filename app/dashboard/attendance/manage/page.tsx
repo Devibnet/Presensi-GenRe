@@ -98,80 +98,97 @@ export default function ManageAttendancePage() {
         const attType = targetReq.attendance_type || 'check_in';
         const act = targetReq.activity_assignment?.activity;
 
-        // Evaluasi ketepatan waktu kedatangan jika permohonan check-in
-        let isLate = false;
-        if (act?.check_in_closes_at) {
-          isLate = new Date(claimedTime) > new Date(act.check_in_closes_at);
-        }
-        const checkInStatus = isLate ? 'late' : 'on_time';
+        const isExcuseRequest = (targetReq.reason || '').toUpperCase().includes('[IZIN') || 
+                                (targetReq.reason || '').toUpperCase().includes('[DISPENSASI');
 
-        // Evaluasi kepulangan mendahului jika permohonan check-out
-        let isEarly = false;
-        if (act?.check_out_opens_at) {
-          isEarly = new Date(claimedTime) < new Date(act.check_out_opens_at);
-        } else if (act?.end_at) {
-          isEarly = new Date(claimedTime) < new Date(act.end_at);
-        }
-        const checkOutStatus = isEarly ? 'early_departure' : 'normal';
-
-        const { data: existingAtt } = await supabase
-          .from('attendances')
-          .select('id, check_in_at, check_out_at, attendance_note')
-          .eq('activity_assignment_id', assignmentId)
-          .maybeSingle();
-
-        const noteText = `Disetujui manual oleh Koordinator: ${reviewNote || targetReq.reason}`;
-
-        if (existingAtt) {
-          const updatePayload: any = {
-            verification_status: 'approved',
-            verified_by: reviewerId,
-            verified_at: nowIso,
-            attendance_note: existingAtt.attendance_note ? `${existingAtt.attendance_note} | ${noteText}` : noteText,
-            updated_at: nowIso,
-          };
-
-          if (attType === 'check_in' || attType === 'both') {
-            updatePayload.check_in_at = claimedTime;
-            updatePayload.check_in_method = 'manual';
-            updatePayload.check_in_status = checkInStatus;
-          }
-          if (attType === 'check_out' || attType === 'both') {
-            updatePayload.check_out_at = claimedTime;
-            updatePayload.check_out_method = 'manual';
-            updatePayload.check_out_status = checkOutStatus;
-          }
-
-          await supabase.from('attendances').update(updatePayload).eq('id', existingAtt.id);
+        if (isExcuseRequest) {
+          // Setujui sebagai Dispensasi Izin di level penugasan (nilai terlindungi penuh)
+          const cleanReason = targetReq.reason.replace(/^\[.*?\]\s*/, '') || 'Dispensasi izin disetujui Koordinator';
+          await supabase
+            .from('activity_assignments')
+            .update({
+              assignment_status: 'excused',
+              cancellation_reason: reviewNote ? `${cleanReason} (${reviewNote})` : cleanReason,
+              cancelled_at: nowIso,
+              updated_at: nowIso,
+            })
+            .eq('id', assignmentId);
         } else {
-          const insertPayload: any = {
-            activity_assignment_id: assignmentId,
-            verification_status: 'approved',
-            verified_by: reviewerId,
-            verified_at: nowIso,
-            attendance_note: noteText,
-            created_at: nowIso,
-            updated_at: nowIso,
-          };
+          // Evaluasi ketepatan waktu kedatangan jika permohonan check-in biasa
+          let isLate = false;
+          if (act?.check_in_closes_at) {
+            isLate = new Date(claimedTime) > new Date(act.check_in_closes_at);
+          }
+          const checkInStatus = isLate ? 'late' : 'on_time';
 
-          if (attType === 'check_in' || attType === 'both') {
-            insertPayload.check_in_at = claimedTime;
-            insertPayload.check_in_method = 'manual';
-            insertPayload.check_in_status = checkInStatus;
+          // Evaluasi kepulangan mendahului jika permohonan check-out
+          let isEarly = false;
+          if (act?.check_out_opens_at) {
+            isEarly = new Date(claimedTime) < new Date(act.check_out_opens_at);
+          } else if (act?.end_at) {
+            isEarly = new Date(claimedTime) < new Date(act.end_at);
+          }
+          const checkOutStatus = isEarly ? 'early_departure' : 'normal';
+
+          const { data: existingAtt } = await supabase
+            .from('attendances')
+            .select('id, check_in_at, check_out_at, attendance_note')
+            .eq('activity_assignment_id', assignmentId)
+            .maybeSingle();
+
+          const noteText = `Disetujui manual oleh Koordinator: ${reviewNote || targetReq.reason}`;
+
+          if (existingAtt) {
+            const updatePayload: any = {
+              verification_status: 'approved',
+              verified_by: reviewerId,
+              verified_at: nowIso,
+              attendance_note: existingAtt.attendance_note ? `${existingAtt.attendance_note} | ${noteText}` : noteText,
+              updated_at: nowIso,
+            };
+
+            if (attType === 'check_in' || attType === 'both') {
+              updatePayload.check_in_at = claimedTime;
+              updatePayload.check_in_method = 'manual';
+              updatePayload.check_in_status = checkInStatus;
+            }
+            if (attType === 'check_out' || attType === 'both') {
+              updatePayload.check_out_at = claimedTime;
+              updatePayload.check_out_method = 'manual';
+              updatePayload.check_out_status = checkOutStatus;
+            }
+
+            await supabase.from('attendances').update(updatePayload).eq('id', existingAtt.id);
           } else {
-            // Jika hanya check-out tapi belum pernah check-in
-            insertPayload.check_in_at = claimedTime;
-            insertPayload.check_in_method = 'manual';
-            insertPayload.check_in_status = 'on_time';
-          }
+            const insertPayload: any = {
+              activity_assignment_id: assignmentId,
+              verification_status: 'approved',
+              verified_by: reviewerId,
+              verified_at: nowIso,
+              attendance_note: noteText,
+              created_at: nowIso,
+              updated_at: nowIso,
+            };
 
-          if (attType === 'check_out' || attType === 'both') {
-            insertPayload.check_out_at = claimedTime;
-            insertPayload.check_out_method = 'manual';
-            insertPayload.check_out_status = checkOutStatus;
-          }
+            if (attType === 'check_in' || attType === 'both') {
+              insertPayload.check_in_at = claimedTime;
+              insertPayload.check_in_method = 'manual';
+              insertPayload.check_in_status = checkInStatus;
+            } else {
+              // Jika hanya check-out tapi belum pernah check-in
+              insertPayload.check_in_at = claimedTime;
+              insertPayload.check_in_method = 'manual';
+              insertPayload.check_in_status = 'on_time';
+            }
 
-          await supabase.from('attendances').insert(insertPayload);
+            if (attType === 'check_out' || attType === 'both') {
+              insertPayload.check_out_at = claimedTime;
+              insertPayload.check_out_method = 'manual';
+              insertPayload.check_out_status = checkOutStatus;
+            }
+
+            await supabase.from('attendances').insert(insertPayload);
+          }
         }
       }
 
@@ -266,6 +283,13 @@ export default function ManageAttendancePage() {
                     <span className="font-bold text-slate-900 text-sm">{req.member?.full_name}</span>
                     <span className="text-[11px] font-mono font-semibold text-teal-700">({req.member?.member_code})</span>
                     <Badge status={req.review_status} />
+                    {(req.reason || '').toUpperCase().includes('[IZIN') || (req.reason || '').toUpperCase().includes('[DISPENSASI') ? (
+                      <Badge status="excused" label="Permohonan Izin / Sakit" />
+                    ) : (
+                      <span className="text-[10px] px-2 py-0.5 rounded font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                        Presensi: {req.attendance_type || 'check_in'}
+                      </span>
+                    )}
                   </div>
 
                   <div className="text-xs text-slate-700">

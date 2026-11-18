@@ -649,18 +649,18 @@ export default function ActivitiesPage() {
             </p>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+          <div className="flex justify-end gap-3 pt-3.5 pb-2 border-t border-slate-100 sticky -bottom-4 sm:-bottom-5 bg-white/95 backdrop-blur-sm -mx-5 sm:-mx-6 px-5 sm:px-6 z-10 mt-4">
             <button
               type="button"
               onClick={() => setIsCreateModalOpen(false)}
-              className="px-4 py-2 rounded-xl font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors"
+              className="px-4 py-2 rounded-xl font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={creating}
-              className="px-5 py-2 rounded-xl font-semibold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2 shadow-sm shadow-teal-600/20"
+              className="px-5 py-2 rounded-xl font-semibold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2 shadow-sm shadow-teal-600/20 cursor-pointer"
             >
               {creating ? 'Menyimpan...' : 'Simpan Agenda Kegiatan'}
             </button>
@@ -813,18 +813,18 @@ export default function ActivitiesPage() {
             </label>
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+          <div className="flex justify-end gap-3 pt-3.5 pb-2 border-t border-slate-100 sticky -bottom-4 sm:-bottom-5 bg-white/95 backdrop-blur-sm -mx-5 sm:-mx-6 px-5 sm:px-6 z-10 mt-4">
             <button
               type="button"
               onClick={() => setIsEditModalOpen(false)}
-              className="px-4 py-2 rounded-xl font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors"
+              className="px-4 py-2 rounded-xl font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
             >
               Batal
             </button>
             <button
               type="submit"
               disabled={updating}
-              className="px-5 py-2 rounded-xl font-semibold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2 shadow-sm shadow-teal-600/20"
+              className="px-5 py-2 rounded-xl font-semibold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 flex items-center gap-2 shadow-sm shadow-teal-600/20 cursor-pointer"
             >
               {updating ? 'Menyimpan...' : 'Simpan Perubahan'}
             </button>

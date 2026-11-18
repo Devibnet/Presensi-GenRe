@@ -342,6 +342,7 @@ export async function POST(request: Request) {
             member_code: memberCode,
             system_role: assignedSystemRole,
             organization_position: position,
+            initial_password: rawPassword,
             must_change_password: true,
             imported_at: new Date().toISOString(),
           },

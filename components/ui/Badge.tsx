@@ -29,6 +29,7 @@ const STATUS_LABELS: Record<string, string> = {
   submitted: 'Diajukan',
   under_review: 'Dalam Peninjauan',
   resolved: 'Diselesaikan',
+  excused: 'Izin / Dispensasi',
 };
 
 export function Badge({ status, label, className = '' }: BadgeProps) {

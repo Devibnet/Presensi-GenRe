@@ -86,6 +86,8 @@ export async function POST(request: Request) {
       user_metadata: {
         full_name: trimmedFullName,
         member_code: finalCode,
+        initial_password: defaultPassword,
+        must_change_password: true,
       },
     });
 

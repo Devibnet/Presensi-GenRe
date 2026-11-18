@@ -61,6 +61,7 @@ body {
   0% {
     background-position: -200% 0;
   }
+
   100% {
     background-position: 200% 0;
   }
@@ -77,9 +78,10 @@ body {
     opacity: 0;
     transform: translateY(4px);
   }
+
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: none;
   }
 }
 
@@ -93,6 +95,7 @@ body {
     size: A4 portrait;
     margin: 8mm;
   }
+
   body {
     background: #ffffff !important;
     color: #0f172a !important;

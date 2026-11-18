@@ -69,6 +69,12 @@ export default function ActivityDetailPage() {
   const [assignmentToRemove, setAssignmentToRemove] = useState<{ id: string; name: string; memberCode?: string; fieldName?: string } | null>(null);
   const [removingAssignment, setRemovingAssignment] = useState(false);
 
+  // Modal Beri Dispensasi / Izin
+  const [isExcuseModalOpen, setIsExcuseModalOpen] = useState(false);
+  const [assignmentForExcuse, setAssignmentForExcuse] = useState<{ id: string; name: string } | null>(null);
+  const [excuseReason, setExcuseReason] = useState('');
+  const [savingExcuse, setSavingExcuse] = useState(false);
+
   // Filter Table State
   const [tableFieldFilter, setTableFieldFilter] = useState<string>('all');
   const [tableStatusFilter, setTableStatusFilter] = useState<string>('all');
@@ -838,6 +844,73 @@ export default function ActivityDetailPage() {
     }
   };
 
+  // Buka Modal Dispensasi / Izin
+  const openExcuseModal = (item: any) => {
+    setAssignmentForExcuse({
+      id: item.id,
+      name: item.member?.full_name || 'Panitia',
+    });
+    setExcuseReason('');
+    setIsExcuseModalOpen(true);
+  };
+
+  // Simpan Dispensasi / Izin
+  const handleSaveExcuse = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!assignmentForExcuse || !canManage) return;
+
+    setSavingExcuse(true);
+    try {
+      const res = await fetch('/api/activities/assignments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: assignmentForExcuse.id,
+          status: 'excused',
+          reason: excuseReason.trim() || 'Dispensasi izin oleh Koordinator',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal memberikan dispensasi izin');
+
+      toast.success('Dispensasi Disimpan', data.message || `Dispensasi izin untuk ${assignmentForExcuse.name} berhasil diberikan.`);
+      setIsExcuseModalOpen(false);
+      setAssignmentForExcuse(null);
+      setExcuseReason('');
+      await loadData();
+    } catch (err: any) {
+      toast.error('Gagal Memberikan Dispensasi', err.message);
+    } finally {
+      setSavingExcuse(false);
+    }
+  };
+
+  // Batalkan Izin & Kembalikan ke Aktif
+  const handleRevertExcuse = async (assignmentId: string, memberName: string) => {
+    if (!canManage) return;
+    if (!confirm(`Batalkan izin untuk ${memberName} dan kembalikan status penugasan menjadi aktif?`)) return;
+
+    try {
+      const res = await fetch('/api/activities/assignments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: assignmentId,
+          status: 'active',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Gagal membatalkan izin');
+
+      toast.success('Status Diaktifkan', `Status penugasan ${memberName} dikembalikan menjadi aktif.`);
+      await loadData();
+    } catch (err: any) {
+      toast.error('Gagal Mengaktifkan Kembali', err.message);
+    }
+  };
+
   if (loading && !activity) {
     return (
       <div className="space-y-6 animate-fade-in max-w-7xl mx-auto">
@@ -903,9 +976,11 @@ export default function ActivityDetailPage() {
 
     let matchStatus = true;
     if (tableStatusFilter === 'on_time') {
-      matchStatus = a.attendance?.check_in_status === 'on_time';
+      matchStatus = a.attendance?.check_in_status === 'on_time' && a.assignment_status !== 'excused';
     } else if (tableStatusFilter === 'late') {
-      matchStatus = a.attendance?.check_in_status === 'late';
+      matchStatus = a.attendance?.check_in_status === 'late' && a.assignment_status !== 'excused';
+    } else if (tableStatusFilter === 'excused') {
+      matchStatus = a.assignment_status === 'excused';
     } else if (tableStatusFilter === 'early_departure') {
       matchStatus = a.attendance?.check_out_status === 'early_departure';
     } else if (tableStatusFilter === 'no_checkout') {
@@ -918,7 +993,7 @@ export default function ActivityDetailPage() {
     } else if (tableStatusFilter === 'checked_in') {
       matchStatus = Boolean(a.attendance?.check_in_at);
     } else if (tableStatusFilter === 'not_checked_in') {
-      matchStatus = !a.attendance?.check_in_at;
+      matchStatus = !a.attendance?.check_in_at && a.assignment_status !== 'excused';
     }
 
     return matchField && matchSearch && matchStatus;
@@ -931,9 +1006,10 @@ export default function ActivityDetailPage() {
   );
 
   const totalAssigned = assignments.length;
+  const totalExcused = assignments.filter(a => a.assignment_status === 'excused').length;
   const totalCheckedIn = assignments.filter(a => a.attendance?.check_in_at).length;
-  const totalOnTime = assignments.filter(a => a.attendance?.check_in_status === 'on_time').length;
-  const totalLate = assignments.filter(a => a.attendance?.check_in_status === 'late').length;
+  const totalOnTime = assignments.filter(a => a.attendance?.check_in_status === 'on_time' && a.assignment_status !== 'excused').length;
+  const totalLate = assignments.filter(a => a.attendance?.check_in_status === 'late' && a.assignment_status !== 'excused').length;
   const totalEarly = assignments.filter(a => a.attendance?.check_out_status === 'early_departure').length;
   const totalNoCheckout = assignments.filter(
     a => a.attendance?.check_in_at && !a.attendance?.check_out_at && isCheckoutClosed
@@ -1157,7 +1233,7 @@ export default function ActivityDetailPage() {
         {/* Right Column: Live Attendance Monitor */}
         <Card
           title="Pemantau Presensi Panitia"
-          subtitle={`${totalCheckedIn} dari ${totalAssigned} panitia telah hadir (${totalOnTime} Tepat Waktu, ${totalLate} Terlambat)`}
+          subtitle={`${totalCheckedIn} hadir (${totalOnTime} Tepat Waktu, ${totalLate} Terlambat), ${totalExcused} Izin/Dispensasi dari ${totalAssigned} panitia ditugaskan`}
           action={
             canManage ? (
               <button
@@ -1196,11 +1272,12 @@ export default function ActivityDetailPage() {
                 <option value="all">Semua Status Presensi ({assignments.length})</option>
                 <option value="on_time">🟢 Tepat Waktu ({totalOnTime})</option>
                 <option value="late">🔴 Terlambat ({totalLate})</option>
+                <option value="excused">🟣 Izin / Dispensasi ({totalExcused})</option>
                 <option value="early_departure">🟠 Pulang Mendahului ({totalEarly})</option>
                 {isCheckoutClosed && totalNoCheckout > 0 && (
                   <option value="no_checkout">⚠️ Tidak Check-out ({totalNoCheckout})</option>
                 )}
-                <option value="not_checked_in">🟡 Belum Check-in ({totalAssigned - totalCheckedIn})</option>
+                <option value="not_checked_in">🟡 Belum Check-in ({totalAssigned - totalCheckedIn - totalExcused})</option>
               </select>
 
               <select
@@ -1271,6 +1348,18 @@ export default function ActivityDetailPage() {
             >
               <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
               Terlambat ({totalLate})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTableStatusFilter('excused')}
+              className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                tableStatusFilter === 'excused'
+                  ? 'bg-purple-600 text-white shadow-xs'
+                  : 'bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200'
+              }`}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
+              Izin / Dispensasi ({totalExcused})
             </button>
             <button
               type="button"
@@ -1381,7 +1470,16 @@ export default function ActivityDetailPage() {
                           </span>
                         </td>
                         <td className="py-2.5 px-3">
-                          {att?.check_in_at ? (
+                          {item.assignment_status === 'excused' ? (
+                            <div className="flex flex-col gap-0.5 items-start">
+                              <Badge status="excused" label="Izin / Dispensasi" />
+                              {item.cancellation_reason && (
+                                <span className="text-[10px] text-purple-700 font-medium italic max-w-[160px] truncate" title={item.cancellation_reason}>
+                                  {item.cancellation_reason}
+                                </span>
+                              )}
+                            </div>
+                          ) : att?.check_in_at ? (
                             <Badge status={att.check_in_status} />
                           ) : (
                             <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-medium">Belum Check-in</span>
@@ -1416,14 +1514,31 @@ export default function ActivityDetailPage() {
                         {canManage && (
                           <td className="py-2.5 px-3 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              {!att?.check_in_at ? (
+                              {item.assignment_status === 'excused' ? (
                                 <button
-                                  onClick={() => handleQuickAttendance(item.id, item.member?.full_name || 'Panitia', 'check_in')}
-                                  className="px-2 py-1 rounded-md text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors cursor-pointer"
-                                  title="Catat Masuk"
+                                  onClick={() => handleRevertExcuse(item.id, item.member?.full_name || 'Panitia')}
+                                  className="px-2 py-1 rounded-md text-[11px] font-semibold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 transition-colors cursor-pointer"
+                                  title="Batalkan Izin & Kembalikan ke Aktif"
                                 >
-                                  + Masuk
+                                  Batalkan Izin
                                 </button>
+                              ) : !att?.check_in_at ? (
+                                <>
+                                  <button
+                                    onClick={() => handleQuickAttendance(item.id, item.member?.full_name || 'Panitia', 'check_in')}
+                                    className="px-2 py-1 rounded-md text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors cursor-pointer"
+                                    title="Catat Masuk"
+                                  >
+                                    + Masuk
+                                  </button>
+                                  <button
+                                    onClick={() => openExcuseModal(item)}
+                                    className="px-2 py-1 rounded-md text-[11px] font-semibold bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 transition-colors cursor-pointer"
+                                    title="Beri Dispensasi / Izin Tidak Hadir"
+                                  >
+                                    + Izin
+                                  </button>
+                                </>
                               ) : !att?.check_out_at ? (
                                 <button
                                   onClick={() => handleQuickAttendance(item.id, item.member?.full_name || 'Panitia', 'check_out')}
@@ -1575,6 +1690,78 @@ export default function ActivityDetailPage() {
               </button>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* ============================================================================== */}
+      {/* MODAL: PEMBERIAN DISPENSASI / IZIN TIDAK HADIR */}
+      {/* ============================================================================== */}
+      {canManage && (
+        <Modal
+          isOpen={isExcuseModalOpen}
+          onClose={() => {
+            if (!savingExcuse) {
+              setIsExcuseModalOpen(false);
+              setAssignmentForExcuse(null);
+            }
+          }}
+          title="Beri Dispensasi / Izin Tidak Hadir"
+          description="Berikan status izin sah bagi panitia yang berhalangan hadir. Nilai kehadiran dan kelayakan sertifikat panitia tidak akan dipotong."
+        >
+          <form onSubmit={handleSaveExcuse} className="space-y-4 text-xs">
+            <div className="p-3.5 rounded-2xl bg-purple-50 border border-purple-200 text-purple-900 space-y-1">
+              <div className="flex items-center gap-2 font-bold text-purple-950">
+                <ShieldCheck className="w-4 h-4 text-purple-700" />
+                <span>Perlindungan Nilai Presensi</span>
+              </div>
+              <p className="text-[11px] text-purple-800 leading-relaxed">
+                Panitia yang diberikan status izin resmi tidak akan terkena penalti kehadiran sistem. Skor kehadiran tetap dihitung penuh (maks 40 poin).
+              </p>
+            </div>
+
+            {assignmentForExcuse && (
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <span className="text-slate-500 block text-[11px]">Nama Panitia:</span>
+                <span className="font-bold text-slate-900 text-sm">{assignmentForExcuse.name}</span>
+              </div>
+            )}
+
+            <div>
+              <label className="block font-semibold text-slate-700 mb-1">
+                Alasan Izin / Dispensasi *
+              </label>
+              <textarea
+                required
+                rows={3}
+                placeholder="Contoh: Sakit demam bed rest, jadwal kuliah/ujian bentrok, tugas dinas luar kota..."
+                value={excuseReason}
+                onChange={(e) => setExcuseReason(e.target.value)}
+                className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 placeholder-slate-400 focus:bg-white focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                disabled={savingExcuse}
+                onClick={() => {
+                  setIsExcuseModalOpen(false);
+                  setAssignmentForExcuse(null);
+                }}
+                className="px-4 py-2 rounded-xl font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 transition-colors cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                disabled={savingExcuse}
+                className="px-4 py-2 rounded-xl font-bold text-white bg-purple-600 hover:bg-purple-700 disabled:opacity-50 transition-colors flex items-center gap-1.5 shadow-sm shadow-purple-600/20 cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>{savingExcuse ? 'Menyimpan...' : 'Simpan Status Izin'}</span>
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
 
