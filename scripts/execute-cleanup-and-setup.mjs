@@ -167,6 +167,7 @@ async function run() {
           member_code: memberCode,
           system_role: assignedRole,
           organization_position: position,
+          initial_password: password,
           must_change_password: true,
         }
       });
@@ -185,6 +186,7 @@ async function run() {
           member_code: memberCode,
           system_role: assignedRole,
           organization_position: position,
+          initial_password: password,
           must_change_password: true,
         }
       });

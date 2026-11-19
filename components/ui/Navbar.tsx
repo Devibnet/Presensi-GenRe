@@ -18,9 +18,11 @@ import {
   CheckCircle2,
   Info,
   X,
-  AlertTriangle
+  AlertTriangle,
+  KeyRound
 } from 'lucide-react';
 import { LogoutModal } from '@/components/ui/LogoutModal';
+import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal';
 import { GenreLogo } from '@/components/ui/GenreLogo';
 import { Modal } from '@/components/ui/Modal';
 
@@ -46,6 +48,7 @@ export function Navbar({ onToggleMobileMenu, title = 'Panel Administrasi', userN
   const [timeWITA, setTimeWITA] = useState<string>('');
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
   const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
   const [clearingAll, setClearingAll] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<NotificationItem | null>(null);
@@ -440,6 +443,17 @@ export function Navbar({ onToggleMobileMenu, title = 'Panel Administrasi', userN
           )}
         </div>
 
+        {/* Ganti Sandi Button */}
+        <button
+          type="button"
+          onClick={() => setIsChangePasswordOpen(true)}
+          title="Keamanan Akun: Ganti Kata Sandi"
+          className="px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-teal-50 hover:bg-teal-100/80 border border-teal-200 text-teal-800 transition-colors text-xs font-bold flex items-center gap-1.5 active:scale-95 cursor-pointer shadow-2xs"
+        >
+          <KeyRound className="w-3.5 h-3.5 text-teal-600" />
+          <span className="hidden sm:inline">Ganti Sandi</span>
+        </button>
+
         {/* Logout Button */}
         <button
           suppressHydrationWarning
@@ -451,6 +465,12 @@ export function Navbar({ onToggleMobileMenu, title = 'Panel Administrasi', userN
           <span className="hidden sm:inline">Keluar</span>
         </button>
       </div>
+
+      {/* Modal: Ganti Kata Sandi Akun */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
 
       {/* Confirmation Modal Logout */}
       <LogoutModal

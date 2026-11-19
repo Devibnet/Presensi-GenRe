@@ -18,10 +18,12 @@ import {
   ClipboardList,
   UploadCloud,
   X,
-  LogOut
+  LogOut,
+  KeyRound
 } from 'lucide-react';
 import { GenreLogo } from '@/components/ui/GenreLogo';
 import { LogoutModal } from '@/components/ui/LogoutModal';
+import { ChangePasswordModal } from '@/components/auth/ChangePasswordModal';
 import { SystemRole } from '@/lib/types';
 import { getRoleBadgeClass, getRoleLabel } from '@/lib/utils';
 
@@ -40,6 +42,7 @@ export function Sidebar({
 }: SidebarProps) {
   const pathname = usePathname();
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
   const navSections = [
     {
@@ -152,7 +155,19 @@ export function Sidebar({
       </div>
 
       {/* Footer Info & Logout */}
-      <div className="p-3 border-t border-slate-100 bg-slate-50/50 space-y-2">
+      <div className="p-3 border-t border-slate-100 bg-slate-50/50 space-y-1.5">
+        <button
+          type="button"
+          onClick={() => setIsChangePasswordOpen(true)}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-teal-800 hover:bg-teal-50/80 border border-transparent hover:border-teal-200 transition-all cursor-pointer group active:scale-95"
+        >
+          <div className="flex items-center gap-2">
+            <KeyRound className="w-4 h-4 text-teal-600 group-hover:rotate-12 transition-transform" />
+            <span>Ganti Kata Sandi</span>
+          </div>
+          <span className="text-[10px] font-semibold text-teal-600">Privasi</span>
+        </button>
+
         <button
           type="button"
           onClick={() => setIsLogoutModalOpen(true)}
@@ -173,6 +188,12 @@ export function Sidebar({
           <span className="font-mono text-[10px] text-slate-400">v1.0 (2026)</span>
         </div>
       </div>
+
+      {/* Modal: Ganti Kata Sandi */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordOpen}
+        onClose={() => setIsChangePasswordOpen(false)}
+      />
 
       {/* Confirmation Modal Logout */}
       <LogoutModal

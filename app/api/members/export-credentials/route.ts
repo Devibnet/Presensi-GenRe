@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { resolveMemberInitialPassword } from '@/lib/credentials-master';
 
 export async function POST(request: Request) {
   try {
@@ -120,18 +121,19 @@ export async function POST(request: Request) {
       const initialPasswordSaved = userMeta.initial_password;
       const mustChangePassword = userMeta.must_change_password;
 
-      let passwordDisplay = 'GenRe2026!Buleleng';
-      let passwordStatus = 'default';
+      let passwordDisplay = '';
+      let passwordStatus = 'initial';
 
-      if (initialPasswordSaved && typeof initialPasswordSaved === 'string') {
-        passwordDisplay = initialPasswordSaved;
-        passwordStatus = 'initial';
-      } else if (mustChangePassword === false) {
+      if (mustChangePassword === false) {
         passwordDisplay = '[Telah Diubah Mandiri oleh Panitia]';
         passwordStatus = 'customized';
       } else {
-        passwordDisplay = 'GenRe2026!Buleleng';
-        passwordStatus = 'default';
+        passwordDisplay = resolveMemberInitialPassword(
+          m.email,
+          m.member_code,
+          initialPasswordSaved
+        );
+        passwordStatus = 'initial';
       }
 
       const fieldObj = Array.isArray(m.fields) ? m.fields[0] : m.fields;
