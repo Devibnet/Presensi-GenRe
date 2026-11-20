@@ -34,8 +34,10 @@ import {
   Camera,
   Lock,
   FileText,
-  Check
+  Check,
+  Share2
 } from 'lucide-react';
+import { ShareActivityModal } from '@/components/activities/ShareActivityModal';
 import QRCode from 'qrcode';
 import { Activity, ActivityAssignment, Profile, AttendanceSession, Field } from '@/lib/types';
 import { formatDateTimeWITA, formatTimeWITA, getStatusBadgeClass, generateActivityCode } from '@/lib/utils';
@@ -63,6 +65,9 @@ export default function ActivityDetailPage() {
   const [isPosterModalOpen, setIsPosterModalOpen] = useState(false);
   const [downloadingPoster, setDownloadingPoster] = useState(false);
   const [downloadingQrOnly, setDownloadingQrOnly] = useState(false);
+
+  // WhatsApp Share State
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   // Modal Konfirmasi Batalkan Penugasan (Mencegah Salah Klik)
   const [isRemoveAssignmentModalOpen, setIsRemoveAssignmentModalOpen] = useState(false);
@@ -1049,6 +1054,14 @@ export default function ActivityDetailPage() {
           {/* Tombol Aksi di Header Utama - Khusus Koordinator & Admin */}
           {canManage && (
             <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+              <button
+                onClick={() => setIsShareModalOpen(true)}
+                className="px-3.5 py-2.5 rounded-xl text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                title="Bagikan Informasi & Tautan Presensi ke WhatsApp"
+              >
+                <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Bagikan ke WA</span>
+              </button>
               <button
                 onClick={() => setIsPosterModalOpen(true)}
                 className="px-3.5 py-2.5 rounded-xl text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
@@ -2314,6 +2327,13 @@ export default function ActivityDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Modal Share Agenda Kegiatan ke WhatsApp */}
+      <ShareActivityModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        activity={activity}
+      />
     </>
   );
 }

@@ -18,13 +18,15 @@ import {
   CheckCircle2,
   Edit2,
   Trash2,
-  RefreshCw
+  RefreshCw,
+  Share2
 } from 'lucide-react';
 import { Activity } from '@/lib/types';
 import { formatDateTimeWITA, generateActivityCode } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { sendInAppNotification } from '@/lib/notifications';
 import { SkeletonActivityCard } from '@/components/ui/Skeleton';
+import { ShareActivityModal } from '@/components/activities/ShareActivityModal';
 
 export default function ActivitiesPage() {
   const { toast } = useToast();
@@ -73,6 +75,11 @@ export default function ActivitiesPage() {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [selectedActivityForDelete, setSelectedActivityForDelete] = useState<Activity | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Modal State: Share Agenda ke WhatsApp
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [selectedActivityForShare, setSelectedActivityForShare] = useState<Activity | null>(null);
+  const [isJustCreatedShare, setIsJustCreatedShare] = useState(false);
 
   const supabase = createClient();
 
@@ -206,6 +213,13 @@ export default function ActivitiesPage() {
       setCheckOutClosesAt('');
       setAssignAllMembers(false);
       await fetchActivities();
+
+      // Langsung buka modal Bagikan Pengumuman Agenda Kegiatan ke WhatsApp
+      if (result.data) {
+        setSelectedActivityForShare(result.data);
+        setIsJustCreatedShare(true);
+        setIsShareModalOpen(true);
+      }
     } catch (err: any) {
       toast.error('Gagal Membuat Agenda', err.message);
     } finally {
@@ -413,6 +427,20 @@ export default function ActivitiesPage() {
                 </span>
 
                 <div className="flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedActivityForShare(act);
+                      setIsJustCreatedShare(false);
+                      setIsShareModalOpen(true);
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                    title="Bagikan Agenda ke WhatsApp"
+                  >
+                    <Share2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Bagikan</span>
+                  </button>
+
                   {(userRole === 'admin' || userRole === 'coordinator') && (
                     <>
                       <button
@@ -870,6 +898,18 @@ export default function ActivitiesPage() {
           </div>
         </div>
       </Modal>
+
+      {/* Modal Bagikan Agenda ke WhatsApp */}
+      <ShareActivityModal
+        isOpen={isShareModalOpen}
+        onClose={() => {
+          setIsShareModalOpen(false);
+          setSelectedActivityForShare(null);
+          setIsJustCreatedShare(false);
+        }}
+        activity={selectedActivityForShare}
+        isJustCreated={isJustCreatedShare}
+      />
     </div>
   );
 }
