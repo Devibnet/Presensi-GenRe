@@ -928,14 +928,35 @@ export default function ReportsPage() {
                   {fieldSummaries.slice(0, 6).map((f, i) => (
                     <tr key={i} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-4 py-3.5">
-                        <div className="font-semibold text-slate-900">{f.field_name}</div>
-                        <div className="text-[10px] text-teal-700 font-mono font-medium">{f.field_code}</div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFilterDivision(f.field_id);
+                            setActiveTab('members');
+                          }}
+                          className="text-left group cursor-pointer block"
+                          title={`Lihat daftar panitia di ${f.field_name}`}
+                        >
+                          <div className="font-semibold text-slate-900 group-hover:text-teal-700 transition-colors">{f.field_name}</div>
+                          <div className="text-[10px] text-teal-700 font-mono font-medium">{f.field_code}</div>
+                        </button>
                       </td>
                       <td className="px-4 py-3.5 text-slate-800 font-medium">
                         {f.coordinator_name}
                       </td>
-                      <td className="px-4 py-3.5 text-center font-bold text-slate-900">
-                        {f.total_members} Orang
+                      <td className="px-4 py-3.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFilterDivision(f.field_id);
+                            setActiveTab('members');
+                          }}
+                          className="inline-flex items-center gap-1.5 font-bold text-teal-800 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg border border-teal-200 transition-all cursor-pointer shadow-2xs group"
+                          title={`Klik untuk melihat daftar ${f.total_members} panitia di divisi ${f.field_name}`}
+                        >
+                          <span>{f.total_members} Orang</span>
+                          <ArrowRight className="w-3 h-3 text-teal-600 group-hover:translate-x-0.5 transition-transform" />
+                        </button>
                       </td>
                       <td className="px-4 py-3.5 text-center font-semibold text-teal-700">
                         {f.average_system_score} / 40
@@ -1020,8 +1041,18 @@ export default function ReportsPage() {
                   fieldSummaries.map((f, i) => (
                     <tr key={i} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-4 py-3.5">
-                        <div className="font-semibold text-slate-900">{f.field_name}</div>
-                        <div className="text-[10px] text-teal-700 font-mono font-medium">{f.field_code}</div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFilterDivision(f.field_id);
+                            setActiveTab('members');
+                          }}
+                          className="text-left group cursor-pointer block"
+                          title={`Lihat daftar panitia di ${f.field_name}`}
+                        >
+                          <div className="font-semibold text-slate-900 group-hover:text-teal-700 transition-colors">{f.field_name}</div>
+                          <div className="text-[10px] text-teal-700 font-mono font-medium">{f.field_code}</div>
+                        </button>
                       </td>
 
                       <td className="px-4 py-3.5 text-slate-800 font-medium">
@@ -1031,8 +1062,19 @@ export default function ReportsPage() {
                         )}
                       </td>
 
-                      <td className="px-4 py-3.5 text-center font-bold text-slate-900">
-                        {f.total_members} Orang
+                      <td className="px-4 py-3.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFilterDivision(f.field_id);
+                            setActiveTab('members');
+                          }}
+                          className="inline-flex items-center gap-1.5 font-bold text-teal-800 hover:text-teal-900 bg-teal-50 hover:bg-teal-100 px-2.5 py-1 rounded-lg border border-teal-200 transition-all cursor-pointer shadow-2xs group"
+                          title={`Klik untuk melihat daftar ${f.total_members} panitia di divisi ${f.field_name}`}
+                        >
+                          <span>{f.total_members} Orang</span>
+                          <ArrowRight className="w-3 h-3 text-teal-600 group-hover:translate-x-0.5 transition-transform" />
+                        </button>
                       </td>
 
                       <td className="px-4 py-3.5 text-center font-semibold text-teal-700">

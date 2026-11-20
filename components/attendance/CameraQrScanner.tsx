@@ -162,6 +162,9 @@ export function CameraQrScanner({ onScanSuccess, onClose }: CameraQrScannerProps
     } catch (err: any) {
       alert('Tidak menemukan QR Code yang valid pada berkas gambar ini.');
       setIsProcessing(false);
+    } finally {
+      // Reset input agar dapat memilih berkas yang sama kembali
+      e.target.value = '';
     }
   };
 
@@ -265,7 +268,6 @@ export function CameraQrScanner({ onScanSuccess, onClose }: CameraQrScannerProps
           <input
             type="file"
             accept="image/*"
-            capture="environment"
             onChange={handleFileUpload}
             className="hidden"
           />
