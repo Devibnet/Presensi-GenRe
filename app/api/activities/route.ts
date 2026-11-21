@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { generateActivityCode } from '@/lib/utils';
+import { generateActivityCode, parseWitaToIso } from '@/lib/utils';
 import { calculateAllMembersEvaluation } from '@/lib/evaluations';
 
 // -----------------------------------------------------------------------------
@@ -76,10 +76,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Nama kegiatan, lokasi, dan rentang waktu jadwal presensi wajib diisi.' }, { status: 400 });
     }
 
-    let startDate = new Date(effectiveStart);
-    let endDate = new Date(effectiveEnd);
-    if (endDate <= startDate) {
-      endDate = new Date(startDate.getTime() + 60 * 1000);
+    const startIso = parseWitaToIso(effectiveStart);
+    let endIso = parseWitaToIso(effectiveEnd);
+    if (new Date(endIso) <= new Date(startIso)) {
+      endIso = new Date(new Date(startIso).getTime() + 60 * 1000).toISOString();
     }
 
     let creatorId = user?.id || customCreatedBy;
@@ -129,12 +129,12 @@ export async function POST(request: Request) {
         activity_name: activityName.trim(),
         activity_description: activityDescription?.trim() || null,
         activity_location: activityLocation.trim(),
-        start_at: startDate.toISOString(),
-        end_at: endDate.toISOString(),
-        check_in_opens_at: new Date(checkInOpensAt || effectiveStart).toISOString(),
-        check_in_closes_at: new Date(checkInClosesAt || effectiveEnd).toISOString(),
-        check_out_opens_at: new Date(checkOutOpensAt || effectiveStart).toISOString(),
-        check_out_closes_at: new Date(checkOutClosesAt || effectiveEnd).toISOString(),
+        start_at: startIso,
+        end_at: endIso,
+        check_in_opens_at: parseWitaToIso(checkInOpensAt || effectiveStart),
+        check_in_closes_at: parseWitaToIso(checkInClosesAt || effectiveEnd),
+        check_out_opens_at: parseWitaToIso(checkOutOpensAt || effectiveStart),
+        check_out_closes_at: parseWitaToIso(checkOutClosesAt || effectiveEnd),
         activity_status: 'scheduled',
         attendance_required: true,
         created_by: creatorId,
@@ -242,12 +242,12 @@ export async function PUT(request: Request) {
     const effectiveStart = startAt || checkInOpensAt;
     const effectiveEnd = endAt || checkOutClosesAt || checkInClosesAt;
 
-    if (effectiveStart) updatePayload.start_at = new Date(effectiveStart).toISOString();
-    if (effectiveEnd) updatePayload.end_at = new Date(effectiveEnd).toISOString();
-    if (checkInOpensAt) updatePayload.check_in_opens_at = new Date(checkInOpensAt).toISOString();
-    if (checkInClosesAt) updatePayload.check_in_closes_at = new Date(checkInClosesAt).toISOString();
-    if (checkOutOpensAt) updatePayload.check_out_opens_at = new Date(checkOutOpensAt).toISOString();
-    if (checkOutClosesAt) updatePayload.check_out_closes_at = new Date(checkOutClosesAt).toISOString();
+    if (effectiveStart) updatePayload.start_at = parseWitaToIso(effectiveStart);
+    if (effectiveEnd) updatePayload.end_at = parseWitaToIso(effectiveEnd);
+    if (checkInOpensAt) updatePayload.check_in_opens_at = parseWitaToIso(checkInOpensAt);
+    if (checkInClosesAt) updatePayload.check_in_closes_at = parseWitaToIso(checkInClosesAt);
+    if (checkOutOpensAt) updatePayload.check_out_opens_at = parseWitaToIso(checkOutOpensAt);
+    if (checkOutClosesAt) updatePayload.check_out_closes_at = parseWitaToIso(checkOutClosesAt);
     if (activityStatus) updatePayload.activity_status = activityStatus;
     if (attendanceRequired !== undefined) updatePayload.attendance_required = Boolean(attendanceRequired);
 

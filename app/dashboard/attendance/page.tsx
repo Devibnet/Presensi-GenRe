@@ -25,7 +25,7 @@ import {
   FileText
 } from 'lucide-react';
 import { ActivityAssignment } from '@/lib/types';
-import { formatDateTimeWITA, formatTimeWITA } from '@/lib/utils';
+import { formatDateTimeWITA, formatTimeWITA, parseWitaToIso, formatForInputWITA } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { sendInAppNotification } from '@/lib/notifications';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -223,7 +223,7 @@ export default function AttendancePage() {
 
       const isExcuse = attendanceType === 'excused';
       const effectiveType = isExcuse ? 'check_in' : attendanceType;
-      const effectiveTime = isExcuse ? (claimedTime || new Date().toISOString()) : claimedTime;
+      const effectiveTime = isExcuse ? (parseWitaToIso(claimedTime) || new Date().toISOString()) : parseWitaToIso(claimedTime);
       const formattedReason = isExcuse ? `[IZIN / DISPENSASI] ${manualReason.trim()}` : manualReason.trim();
 
       const res = await fetch('/api/attendance/manual', {
@@ -272,21 +272,13 @@ export default function AttendancePage() {
     }
   };
 
-  // Helper date format for input
-  const formatForInput = (isoStr: string) => {
-    if (!isoStr) return '';
-    const d = new Date(isoStr);
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-
   // Open Edit Manual Request
   const openEditManualModal = (req: any) => {
     setSelectedManualForEdit(req);
     setEditManualForm({
       requestId: req.id,
       attendanceType: req.attendance_type || 'check_in',
-      claimedTime: formatForInput(req.claimed_event_time),
+      claimedTime: formatForInputWITA(req.claimed_event_time),
       reason: req.reason || '',
       evidenceUrl: req.evidence_url || '',
     });
@@ -303,7 +295,10 @@ export default function AttendancePage() {
       const res = await fetch('/api/attendance/manual', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editManualForm),
+        body: JSON.stringify({
+          ...editManualForm,
+          claimedTime: parseWitaToIso(editManualForm.claimedTime),
+        }),
       });
 
       const result = await res.json();

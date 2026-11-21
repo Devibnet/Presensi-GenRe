@@ -54,6 +54,47 @@ export function formatTimeWITA(dateString?: string | null): string {
   }
 }
 
+// Konversi input string datetime-local (YYYY-MM-DDTHH:mm atau teks waktu WITA) ke ISO UTC string
+// Memastikan jam yang diinput pengguna tidak bergeser terlepas dari zona waktu server (Vercel UTC) maupun perangkat pengguna.
+export function parseWitaToIso(inputStr?: string | null): string {
+  if (!inputStr) return '';
+  const trimmed = inputStr.trim();
+  if (!trimmed) return '';
+
+  // Jika sudah berakhiran Z atau memiliki penanda offset (+08:00 / -05:00 dsb)
+  if (trimmed.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(trimmed)) {
+    return new Date(trimmed).toISOString();
+  }
+
+  // Jika berformat YYYY-MM-DDTHH:mm atau YYYY-MM-DDTHH:mm:ss, pasangkan offset resmi WITA (+08:00)
+  const normalized = trimmed.length === 16 ? `${trimmed}:00` : trimmed;
+  return new Date(`${normalized}+08:00`).toISOString();
+}
+
+// Konversi string ISO UTC dari database ke format value input datetime-local (YYYY-MM-DDTHH:mm) sesuai zona waktu WITA (Asia/Makassar)
+export function formatForInputWITA(isoStr?: string | null): string {
+  if (!isoStr) return '';
+  const d = new Date(isoStr);
+  if (isNaN(d.getTime())) return '';
+  try {
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Makassar',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = formatter.formatToParts(d);
+    const m = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+    return `${m.year}-${m.month}-${m.day}T${m.hour}:${m.minute}`;
+  } catch {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+}
+
 export function getRoleBadgeClass(role: string): string {
   switch (role) {
     case 'admin':

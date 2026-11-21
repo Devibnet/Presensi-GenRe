@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { parseWitaToIso } from '@/lib/utils';
 
 // -----------------------------------------------------------------------------
 // GET: Ambil Daftar Permohonan Presensi Manual
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
       .insert({
         activity_assignment_id: assignmentId,
         attendance_type: attendanceType || 'check_in',
-        claimed_event_time: new Date(claimedTime).toISOString(),
+        claimed_event_time: parseWitaToIso(claimedTime),
         reason: reason.trim(),
         evidence_url: evidenceUrl?.trim() || null,
         requested_by: requesterId,
@@ -170,7 +171,7 @@ export async function PATCH(request: Request) {
     };
 
     if (attendanceType) updatePayload.attendance_type = attendanceType;
-    if (claimedTime) updatePayload.claimed_event_time = new Date(claimedTime).toISOString();
+    if (claimedTime) updatePayload.claimed_event_time = parseWitaToIso(claimedTime);
     if (evidenceUrl !== undefined) updatePayload.evidence_url = evidenceUrl?.trim() || null;
 
     const { data: updated, error } = await supabaseAdmin

@@ -40,7 +40,7 @@ import {
 import { ShareActivityModal } from '@/components/activities/ShareActivityModal';
 import QRCode from 'qrcode';
 import { Activity, ActivityAssignment, Profile, AttendanceSession, Field } from '@/lib/types';
-import { formatDateTimeWITA, formatTimeWITA, getStatusBadgeClass, generateActivityCode } from '@/lib/utils';
+import { formatDateTimeWITA, formatTimeWITA, getStatusBadgeClass, generateActivityCode, parseWitaToIso, formatForInputWITA } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { sendInAppNotification } from '@/lib/notifications';
 import { Skeleton, SkeletonStats, SkeletonTable } from '@/components/ui/Skeleton';
@@ -113,14 +113,6 @@ export default function ActivityDetailPage() {
 
   const supabase = createClient();
 
-  const formatForInput = (isoStr?: string | null) => {
-    if (!isoStr) return '';
-    const d = new Date(isoStr);
-    if (isNaN(d.getTime())) return '';
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-
   const openEditModal = () => {
     if (!activity) return;
     setEditForm({
@@ -128,12 +120,12 @@ export default function ActivityDetailPage() {
       activityName: activity.activity_name,
       activityLocation: activity.activity_location,
       activityDescription: activity.activity_description || '',
-      startAt: formatForInput(activity.start_at),
-      endAt: formatForInput(activity.end_at),
-      checkInOpensAt: formatForInput(activity.check_in_opens_at),
-      checkInClosesAt: formatForInput(activity.check_in_closes_at),
-      checkOutOpensAt: formatForInput(activity.check_out_opens_at || activity.end_at),
-      checkOutClosesAt: formatForInput(activity.check_out_closes_at || activity.end_at),
+      startAt: formatForInputWITA(activity.start_at),
+      endAt: formatForInputWITA(activity.end_at),
+      checkInOpensAt: formatForInputWITA(activity.check_in_opens_at),
+      checkInClosesAt: formatForInputWITA(activity.check_in_closes_at),
+      checkOutOpensAt: formatForInputWITA(activity.check_out_opens_at || activity.end_at),
+      checkOutClosesAt: formatForInputWITA(activity.check_out_closes_at || activity.end_at),
       activityStatus: activity.activity_status,
       attendanceRequired: activity.attendance_required,
     });
@@ -155,8 +147,12 @@ export default function ActivityDetailPage() {
         body: JSON.stringify({
           id: activity.id,
           ...editForm,
-          startAt: effectiveStartAt,
-          endAt: effectiveEndAt,
+          startAt: parseWitaToIso(effectiveStartAt),
+          endAt: parseWitaToIso(effectiveEndAt),
+          checkInOpensAt: parseWitaToIso(editForm.checkInOpensAt),
+          checkInClosesAt: parseWitaToIso(editForm.checkInClosesAt),
+          checkOutOpensAt: parseWitaToIso(editForm.checkOutOpensAt),
+          checkOutClosesAt: parseWitaToIso(editForm.checkOutClosesAt),
         }),
       });
 

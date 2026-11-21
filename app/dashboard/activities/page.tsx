@@ -22,7 +22,7 @@ import {
   Share2
 } from 'lucide-react';
 import { Activity } from '@/lib/types';
-import { formatDateTimeWITA, generateActivityCode } from '@/lib/utils';
+import { formatDateTimeWITA, generateActivityCode, parseWitaToIso, formatForInputWITA } from '@/lib/utils';
 import { useToast } from '@/components/ui/Toast';
 import { sendInAppNotification } from '@/lib/notifications';
 import { SkeletonActivityCard } from '@/components/ui/Skeleton';
@@ -170,12 +170,12 @@ export default function ActivitiesPage() {
           activityName: activityName.trim(),
           activityDescription: activityDescription.trim() || null,
           activityLocation: activityLocation.trim(),
-          startAt: new Date(effectiveStartAt).toISOString(),
-          endAt: new Date(effectiveEndAt).toISOString(),
-          checkInOpensAt: new Date(checkInOpensAt).toISOString(),
-          checkInClosesAt: new Date(checkInClosesAt).toISOString(),
-          checkOutOpensAt: new Date(checkOutOpensAt || effectiveStartAt).toISOString(),
-          checkOutClosesAt: new Date(checkOutClosesAt || effectiveEndAt).toISOString(),
+          startAt: parseWitaToIso(effectiveStartAt),
+          endAt: parseWitaToIso(effectiveEndAt),
+          checkInOpensAt: parseWitaToIso(checkInOpensAt),
+          checkInClosesAt: parseWitaToIso(checkInClosesAt),
+          checkOutOpensAt: parseWitaToIso(checkOutOpensAt || effectiveStartAt),
+          checkOutClosesAt: parseWitaToIso(checkOutClosesAt || effectiveEndAt),
           assignAllMembers,
           createdBy: creatorId,
         }),
@@ -227,15 +227,6 @@ export default function ActivitiesPage() {
     }
   };
 
-  // Helper untuk format datetime ke format input datetime-local
-  const formatForInput = (isoStr?: string | null) => {
-    if (!isoStr) return '';
-    const d = new Date(isoStr);
-    if (isNaN(d.getTime())) return '';
-    const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  };
-
   // Buka Modal Edit
   const openEditModal = (act: Activity) => {
     setSelectedActivityForEdit(act);
@@ -245,12 +236,12 @@ export default function ActivitiesPage() {
       activityName: act.activity_name,
       activityLocation: act.activity_location,
       activityDescription: act.activity_description || '',
-      startAt: formatForInput(act.start_at),
-      endAt: formatForInput(act.end_at),
-      checkInOpensAt: formatForInput(act.check_in_opens_at),
-      checkInClosesAt: formatForInput(act.check_in_closes_at),
-      checkOutOpensAt: formatForInput(act.check_out_opens_at || act.end_at),
-      checkOutClosesAt: formatForInput(act.check_out_closes_at || act.end_at),
+      startAt: formatForInputWITA(act.start_at),
+      endAt: formatForInputWITA(act.end_at),
+      checkInOpensAt: formatForInputWITA(act.check_in_opens_at),
+      checkInClosesAt: formatForInputWITA(act.check_in_closes_at),
+      checkOutOpensAt: formatForInputWITA(act.check_out_opens_at || act.end_at),
+      checkOutClosesAt: formatForInputWITA(act.check_out_closes_at || act.end_at),
       activityStatus: act.activity_status,
       attendanceRequired: act.attendance_required,
     });
@@ -272,8 +263,12 @@ export default function ActivitiesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...editForm,
-          startAt: effectiveStartAt,
-          endAt: effectiveEndAt,
+          startAt: parseWitaToIso(effectiveStartAt),
+          endAt: parseWitaToIso(effectiveEndAt),
+          checkInOpensAt: parseWitaToIso(editForm.checkInOpensAt),
+          checkInClosesAt: parseWitaToIso(editForm.checkInClosesAt),
+          checkOutOpensAt: parseWitaToIso(editForm.checkOutOpensAt),
+          checkOutClosesAt: parseWitaToIso(editForm.checkOutClosesAt),
         }),
       });
 
