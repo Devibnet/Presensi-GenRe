@@ -84,6 +84,19 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Presensi ditolak: Kegiatan telah dibatalkan' }, { status: 400 });
     }
 
+    if (activity.activity_status === 'completed') {
+      return NextResponse.json({ error: 'Presensi ditolak: Agenda kegiatan ini telah selesai dan ditutup.' }, { status: 400 });
+    }
+
+    // Periksa batas toleransi + 2 jam (Vonis Alpa)
+    const now = new Date();
+    const toleranceDeadline = activity.check_in_closes_at || activity.start_at;
+    if (toleranceDeadline && now.getTime() > new Date(toleranceDeadline).getTime() + 2 * 60 * 60 * 1000) {
+      return NextResponse.json({
+        error: `Presensi QR ditutup: Batas waktu presensi mandiri dan izin telah berakhir pada ${formatTimeWITA(new Date(new Date(toleranceDeadline).getTime() + 2 * 60 * 60 * 1000).toISOString())} WITA (+2 jam dari batas toleransi). Status Anda pada agenda ini ditetapkan sebagai Alpa. Silakan hubungi Koordinator atau Admin jika terdapat kendala khusus.`,
+      }, { status: 400 });
+    }
+
     // 2. Cek Surat Penugasan Anggota (activity_assignments)
     let { data: assignment } = await supabaseAdmin
       .from('activity_assignments')
@@ -133,7 +146,6 @@ export async function POST(request: Request) {
       }, { status: 403 });
     }
 
-    const now = new Date();
     const nowIso = now.toISOString();
 
     // 3. Periksa Rekam Presensi yang Sudah Ada
@@ -144,107 +156,11 @@ export async function POST(request: Request) {
       .maybeSingle();
 
     // ---------------------------------------------------------------------------
-    // SKENARIO 1: Pengguna sudah menyelesaikan Check-in DAN Check-out
-    // ---------------------------------------------------------------------------
-    if (existingAttendance && existingAttendance.check_in_at && existingAttendance.check_out_at) {
-      return NextResponse.json({
-        error: `Anda sudah menyelesaikan presensi lengkap pada agenda ini (Check-in: ${formatTimeWITA(existingAttendance.check_in_at)}, Check-out: ${formatTimeWITA(existingAttendance.check_out_at)}). Tidak dapat melakukan presensi ulang.`,
-        alreadyCompleted: true,
-        attendance: existingAttendance,
-      }, { status: 400 });
-    }
-
-    // ---------------------------------------------------------------------------
-    // SKENARIO 2: PROSES CHECK-OUT
-    // ---------------------------------------------------------------------------
-    if (actionType === 'check_out' || (existingAttendance && existingAttendance.check_in_at && !existingAttendance.check_out_at && actionType !== 'check_in')) {
-      if (!existingAttendance || !existingAttendance.check_in_at) {
-        return NextResponse.json({
-          error: 'Anda belum melakukan presensi Check-in pada agenda ini. Silakan lakukan check-in terlebih dahulu.',
-        }, { status: 400 });
-      }
-
-      if (existingAttendance.check_out_at) {
-        return NextResponse.json({
-          error: `Anda sudah melakukan presensi Check-out sebelumnya pada pukul ${formatTimeWITA(existingAttendance.check_out_at)}. Tidak dapat melakukan check-out 2 kali.`,
-          alreadyCheckedOut: true,
-          attendance: existingAttendance,
-        }, { status: 400 });
-      }
-
-      const checkInTime = new Date(existingAttendance.check_in_at);
-      if (now < checkInTime) {
-        return NextResponse.json({ error: 'Waktu check-out tidak boleh mendahului waktu check-in.' }, { status: 400 });
-      }
-
-      // Validasi Batas Akhir Check-out (check_out_closes_at)
-      const checkOutDeadline = activity.check_out_closes_at || activity.end_at;
-      if (checkOutDeadline && now > new Date(checkOutDeadline)) {
-        return NextResponse.json({
-          error: `Batas waktu presensi Check-out untuk agenda "${activity.activity_name}" telah berakhir pada pukul ${formatTimeWITA(checkOutDeadline)}. Silakan hubungi Koordinator Sie atau ajukan Permohonan Presensi Manual.`,
-          isExpired: true,
-        }, { status: 400 });
-      }
-
-      // Tentukan apakah checkout mendahului jam yang ditentukan kegiatan
-      let isEarlyDeparture = false;
-      let referenceTimeText = '';
-      if (activity.check_out_opens_at) {
-        isEarlyDeparture = now < new Date(activity.check_out_opens_at);
-        referenceTimeText = formatTimeWITA(activity.check_out_opens_at);
-      } else if (activity.end_at) {
-        isEarlyDeparture = now < new Date(activity.end_at);
-        referenceTimeText = formatTimeWITA(activity.end_at);
-      }
-
-      const checkOutStatus = isEarlyDeparture ? 'early_departure' : 'normal';
-      const checkoutNote = isEarlyDeparture
-        ? `Pulang mendahului sebelum jadwal check-out (${referenceTimeText})`
-        : 'Pulang tepat waktu sesuai jadwal kegiatan';
-
-      const { data: updated, error: updateErr } = await supabaseAdmin
-        .from('attendances')
-        .update({
-          check_out_at: nowIso,
-          check_out_method: 'qr',
-          check_out_status: checkOutStatus,
-          attendance_note: existingAttendance.attendance_note 
-            ? `${existingAttendance.attendance_note} | ${checkoutNote}`
-            : checkoutNote,
-          updated_at: nowIso,
-        })
-        .eq('id', existingAttendance.id)
-        .select()
-        .single();
-
-      if (updateErr) {
-        return NextResponse.json({ error: updateErr.message }, { status: 500 });
-      }
-
-      // Auto-recalculate system score & final evaluation secara akurat setelah check-out
-      if (user?.id && activity?.period_id) {
-        try {
-          await calculateMemberEvaluation(user.id, activity.period_id);
-        } catch (calcErr) {
-          console.warn('Evaluation auto-recalculate error on check-out:', calcErr);
-        }
-      }
-
-      return NextResponse.json({
-        message: isEarlyDeparture 
-          ? `Check-out berhasil dicatat (Status: Mendahului sebelum ${referenceTimeText})` 
-          : 'Check-out berhasil dicatat sesuai jadwal!',
-        statusType: checkOutStatus,
-        attendance: updated,
-      });
-    }
-
-    // ---------------------------------------------------------------------------
-    // SKENARIO 3: PROSES CHECK-IN
+    // VALIDASI: Periksa apakah anggota sudah tercatat hadir
     // ---------------------------------------------------------------------------
     if (existingAttendance && existingAttendance.check_in_at) {
       return NextResponse.json({
-        error: `Anda sudah melakukan presensi Check-in sebelumnya pada pukul ${formatTimeWITA(existingAttendance.check_in_at)}. Tidak dapat melakukan presensi check-in 2 kali.`,
+        error: `Anda sudah tercatat hadir pada agenda "${activity.activity_name}" pada pukul ${formatTimeWITA(existingAttendance.check_in_at)}. Presensi Anda sudah sah dan tidak perlu melakukan presensi ulang.`,
         alreadyCheckedIn: true,
         attendance: existingAttendance,
       }, { status: 400 });

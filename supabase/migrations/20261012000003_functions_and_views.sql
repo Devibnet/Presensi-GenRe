@@ -348,13 +348,14 @@ SELECT
     a.end_at,
     a.activity_status,
     COUNT(aa.id) AS total_assigned_members,
-    COUNT(CASE WHEN att.verification_status = 'approved' AND att.check_in_at IS NOT NULL THEN 1 END) AS total_checked_in,
-    COUNT(CASE WHEN att.verification_status = 'approved' AND att.check_in_status = 'on_time' THEN 1 END) AS total_on_time,
-    COUNT(CASE WHEN att.verification_status = 'approved' AND att.check_in_status = 'late' THEN 1 END) AS total_late,
-    COUNT(CASE WHEN att.verification_status = 'approved' AND att.check_out_at IS NOT NULL THEN 1 END) AS total_checked_out,
-    COUNT(CASE WHEN att.id IS NULL OR att.check_in_at IS NULL THEN 1 END) AS total_not_checked_in
+    COUNT(CASE WHEN aa.assignment_status != 'excused' AND att.verification_status = 'approved' AND att.check_in_at IS NOT NULL THEN 1 END) AS total_checked_in,
+    COUNT(CASE WHEN aa.assignment_status != 'excused' AND att.verification_status = 'approved' AND att.check_in_status = 'on_time' THEN 1 END) AS total_on_time,
+    COUNT(CASE WHEN aa.assignment_status != 'excused' AND att.verification_status = 'approved' AND att.check_in_status = 'late' THEN 1 END) AS total_late,
+    COUNT(CASE WHEN aa.assignment_status != 'excused' AND att.verification_status = 'approved' AND att.check_out_at IS NOT NULL THEN 1 END) AS total_checked_out,
+    COUNT(CASE WHEN aa.assignment_status = 'excused' THEN 1 END) AS total_excused,
+    COUNT(CASE WHEN aa.assignment_status != 'excused' AND (att.id IS NULL OR att.check_in_at IS NULL) THEN 1 END) AS total_not_checked_in
 FROM activities a
-LEFT JOIN activity_assignments aa ON aa.activity_id = a.id AND aa.assignment_status = 'active'
+LEFT JOIN activity_assignments aa ON aa.activity_id = a.id AND aa.assignment_status != 'cancelled'
 LEFT JOIN attendances att ON att.activity_assignment_id = aa.id
 GROUP BY a.id, a.period_id, a.activity_code, a.activity_name, a.start_at, a.end_at, a.activity_status;
 

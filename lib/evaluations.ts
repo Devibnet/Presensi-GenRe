@@ -10,10 +10,11 @@ export interface EvaluationCalculationResult {
     totalAssigned: number;
     presentCount: number;
     onTimeCount: number;
-    checkoutCount: number;
+    checkoutCount?: number;
     attendancePoints: number;
     punctualityPoints: number;
-    checkoutPoints: number;
+    compliancePoints?: number;
+    checkoutPoints?: number;
     systemScore: number;
     coordinatorScore: number;
     finalScore: number;
@@ -79,7 +80,10 @@ export async function calculateMemberEvaluation(
           activity_status,
           attendance_required,
           start_at,
-          end_at
+          end_at,
+          check_in_opens_at,
+          check_in_closes_at,
+          check_out_closes_at
         ),
         attendances(
           id,
@@ -101,8 +105,9 @@ export async function calculateMemberEvaluation(
     }
 
     // 4. Filter kegiatan yang sah untuk dievaluasi
-    // BUG FIX: Hanya menghitung agenda yang sudah atau sedang berlangsung, membutuhkan absensi, dan berada di periode aktif.
-    // Agenda mendatang ('upcoming' / masa depan) tidak boleh memotong skor panitia.
+    // Agenda dinilai jika sudah selesai ('completed'), atau waktu batas alpa (toleransi check-in + 2 jam) telah lewat,
+    // ATAU panitia yang bersangkutan sudah check-in / memiliki izin sah pada agenda tersebut.
+    // Agenda yang masih dalam masa tenggat presensi tidak langsung memotong poin panitia yang belum check-in.
     const now = new Date();
     const eligibleAssignments = (assignments || []).filter((asg: any) => {
       const act = asg.activity;
@@ -111,19 +116,19 @@ export async function calculateMemberEvaluation(
       if (act.attendance_required === false) return false;
       if (act.activity_status === 'cancelled' || act.activity_status === 'draft') return false;
 
-      // Harus sudah selesai, sedang berlangsung, atau waktu mulai kegiatan telah tiba/lewat
-      const isPastOrOngoing =
+      const hasCheckedInOrExcused = asg.assignment_status === 'excused' || (asg.attendances || []).some((a: any) => Boolean(a.check_in_at));
+      const toleranceDeadline = act.check_in_closes_at || act.start_at;
+      const isAlpaFinalized = Boolean(
         act.activity_status === 'completed' ||
-        act.activity_status === 'ongoing' ||
-        (act.start_at && new Date(act.start_at) <= now);
+        (toleranceDeadline && now.getTime() >= new Date(toleranceDeadline).getTime() + 2 * 60 * 60 * 1000)
+      );
 
-      return isPastOrOngoing;
+      return hasCheckedInOrExcused || isAlpaFinalized;
     });
 
     const totalAssigned = eligibleAssignments.length;
     let presentCount = 0;
     let onTimeCount = 0;
-    let checkoutCount = 0;
 
     eligibleAssignments.forEach((asg: any) => {
       const isExcusedAssignment = asg.assignment_status === 'excused';
@@ -137,7 +142,6 @@ export async function calculateMemberEvaluation(
         // Dispensasi resmi di tingkat penugasan: tidak dipenalti
         presentCount++;
         onTimeCount++;
-        checkoutCount++;
       } else if (approvedAtt) {
         const isExcusedCheckin = approvedAtt.check_in_status === 'excused';
         const hasCheckinTime = Boolean(approvedAtt.check_in_at);
@@ -149,30 +153,16 @@ export async function calculateMemberEvaluation(
           if (approvedAtt.check_in_status === 'on_time' || isExcusedCheckin) {
             onTimeCount++;
           }
-
-          // Check-out tervalidasi:
-          // Diakui jika check_out_at terisi, berstatus normal/early, lewat metode qr/manual,
-          // atau terdapat dispensasi izin kepulangan dari koordinator
-          const hasValidCheckout = Boolean(
-            approvedAtt.check_out_at ||
-            isExcusedCheckin ||
-            approvedAtt.check_out_status === 'normal' ||
-            approvedAtt.check_out_status === 'early_departure'
-          );
-
-          if (hasValidCheckout) {
-            checkoutCount++;
-          }
         }
       }
     });
 
     // 5. Perhitungan Poin Skor Sistem (Maks 40 Poin)
-    // Formula proporsional: Setiap kegiatan yang ditugaskan memiliki bobot proporsional (20/N in, 10/N tepat, 10/N out).
-    // Jika tidak ada kegiatan ditugaskan (totalAssigned = 0), seluruh poin sistem bernilai 0.00.
+    // Formula proporsional: Presensi Kehadiran (Maks 20 Poin), Ketepatan Waktu (Maks 10 Poin), Kepatuhan Bebas Alpa (Maks 10 Poin).
+    // Fitur check-out telah dihilangkan secara keseluruhan.
     let attPoints = 0.0;
     let puncPoints = 0.0;
-    let checkoutPoints = 0.0;
+    let compliancePoints = 0.0;
 
     if (totalAssigned > 0) {
       // 1. Kehadiran Masuk: Maks 20.00 Poin
@@ -181,15 +171,15 @@ export async function calculateMemberEvaluation(
       // 2. Ketepatan Waktu: Maks 10.00 Poin (proporsional terhadap total agenda yang ditugaskan)
       puncPoints = Math.min(10.0, Math.max(0.0, Number(((onTimeCount / totalAssigned) * 10.0).toFixed(2))));
 
-      // 3. Kelengkapan Sesi Check-Out: Maks 10.00 Poin (proporsional terhadap total agenda yang ditugaskan)
-      checkoutPoints = Math.min(10.0, Math.max(0.0, Number(((checkoutCount / totalAssigned) * 10.0).toFixed(2))));
+      // 3. Kepatuhan Bebas Alpa: Maks 10.00 Poin (proporsional hadir/izin vs alpa)
+      compliancePoints = Math.min(10.0, Math.max(0.0, Number(((presentCount / totalAssigned) * 10.0).toFixed(2))));
     } else {
       attPoints = 0.0;
       puncPoints = 0.0;
-      checkoutPoints = 0.0;
+      compliancePoints = 0.0;
     }
 
-    const systemScore = Math.min(40.0, Math.max(0.0, Number((attPoints + puncPoints + checkoutPoints).toFixed(2))));
+    const systemScore = Math.min(40.0, Math.max(0.0, Number((attPoints + puncPoints + compliancePoints).toFixed(2))));
 
     // 6. Ambil Evaluasi Koordinator (Maks 60 Poin)
     const { data: review } = await supabaseAdmin
@@ -260,7 +250,7 @@ export async function calculateMemberEvaluation(
       policy_id: policyId,
       attendance_points: attPoints,
       punctuality_points: puncPoints,
-      task_completion_points: checkoutPoints,
+      task_completion_points: compliancePoints,
       system_score: systemScore,
       coordinator_score: coordScore,
       final_score: finalScore,
@@ -295,10 +285,11 @@ export async function calculateMemberEvaluation(
         totalAssigned,
         presentCount,
         onTimeCount,
-        checkoutCount,
+        checkoutCount: presentCount,
         attendancePoints: attPoints,
         punctualityPoints: puncPoints,
-        checkoutPoints,
+        compliancePoints,
+        checkoutPoints: compliancePoints,
         systemScore,
         coordinatorScore: coordScore,
         finalScore,

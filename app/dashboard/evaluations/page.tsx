@@ -63,6 +63,8 @@ export default function EvaluationsPage() {
   const [selectedEvalForDetail, setSelectedEvalForDetail] = useState<FinalEvaluation | null>(null);
   const [detailAttendanceLogs, setDetailAttendanceLogs] = useState<any[]>([]);
   const [loadingDetailLogs, setLoadingDetailLogs] = useState(false);
+  const [myAttendanceLogs, setMyAttendanceLogs] = useState<any[]>([]);
+  const [showMyAttendanceList, setShowMyAttendanceList] = useState(false);
 
   // Modal Hapus Penilaian (CRUD: Delete)
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -94,6 +96,23 @@ export default function EvaluationsPage() {
           currentProf = p as any;
           setCurrentUser(currentProf);
         }
+
+        // Ambil riwayat penugasan dan presensi pribadi untuk transparansi penilaian
+        const { data: myAsgs } = await supabase
+          .from('activity_assignments')
+          .select(`
+            id,
+            assignment_status,
+            cancellation_reason,
+            assignment_type,
+            assignment_description,
+            activity:activities(id, activity_code, activity_name, start_at, end_at, check_in_opens_at, check_in_closes_at, check_out_closes_at),
+            attendances(check_in_at, check_in_status, attendance_note, verification_status)
+          `)
+          .eq('member_id', user.id)
+          .neq('assignment_status', 'cancelled')
+          .order('created_at', { ascending: false });
+        if (myAsgs) setMyAttendanceLogs(myAsgs);
       }
 
       // 2. Final evaluations via API (joins performance_reviews and profiles)
@@ -228,7 +247,7 @@ export default function EvaluationsPage() {
         .select(`
           id,
           assignment_description,
-          activity:activities(id, activity_code, activity_name, start_at, end_at, check_out_opens_at, check_out_closes_at),
+          activity:activities(id, activity_code, activity_name, start_at, end_at, check_in_opens_at, check_in_closes_at, check_out_opens_at, check_out_closes_at),
           attendances(check_in_at, check_out_at, check_in_status, check_out_status, check_out_method, attendance_note, verification_status)
         `)
         .eq('member_id', ev.member_id)
@@ -505,6 +524,38 @@ export default function EvaluationsPage() {
     return matchSearch && matchField && matchEligibility;
   });
 
+  // Helper mengekstrak record presensi sah
+  const getLogAtt = (a: any) => {
+    const raw = a?.attendances || a?.attendance;
+    if (Array.isArray(raw)) {
+      return raw.find((item: any) => item?.check_in_at && (item?.verification_status === 'approved' || !item?.verification_status)) || raw[0] || null;
+    }
+    return raw || null;
+  };
+
+  // Rekapitulasi histori kehadiran pengguna login (transparansi penilaian)
+  const myTotalAssigned = myAttendanceLogs.length;
+  const myOnTimeCount = myAttendanceLogs.filter((a) => {
+    const att = getLogAtt(a);
+    return att?.check_in_status === 'on_time' && a.assignment_status !== 'excused';
+  }).length;
+  const myLateCount = myAttendanceLogs.filter((a) => {
+    const att = getLogAtt(a);
+    return att?.check_in_status === 'late' && a.assignment_status !== 'excused';
+  }).length;
+  const myExcusedCount = myAttendanceLogs.filter((a) => a.assignment_status === 'excused').length;
+  const myAlpaCount = myAttendanceLogs.filter((a) => {
+    if (a.assignment_status === 'excused') return false;
+    const att = getLogAtt(a);
+    if (att?.check_in_at) return false;
+    const toleranceDeadline = a.activity?.check_in_closes_at || a.activity?.start_at;
+    const isClosed = Boolean(
+      a.activity?.activity_status === 'completed' ||
+      (toleranceDeadline && new Date().getTime() > new Date(toleranceDeadline).getTime() + 2 * 60 * 60 * 1000)
+    );
+    return isClosed;
+  }).length;
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -570,8 +621,8 @@ export default function EvaluationsPage() {
         </div>
       )}
 
-      {/* MEMBER VIEW: Banner Nilai Pribadi */}
-      {currentUser?.system_role === 'member' && myEvaluation && (
+      {/* MEMBER & PANITIA VIEW: Banner Nilai & Histori Presensi Pribadi */}
+      {myEvaluation && (
         <Card className="p-5 sm:p-6 bg-gradient-to-br from-teal-50/60 via-emerald-50/40 to-white border-teal-200">
           <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-5 sm:gap-6">
             <div>
@@ -579,10 +630,10 @@ export default function EvaluationsPage() {
                 Transkrip Capaian Kinerja Anda
               </span>
               <h2 className="text-lg sm:text-xl font-bold text-slate-900 mb-1">
-                {currentUser.full_name} ({currentUser.member_code})
+                {currentUser?.full_name} ({currentUser?.member_code})
               </h2>
               <p className="text-xs text-slate-600">
-                Divisi: {currentUser.field?.field_name || 'Umum'} • Posisi: {currentUser.organization_position}
+                Divisi: {currentUser?.field?.field_name || 'Umum'} • Posisi: {currentUser?.organization_position}
               </p>
             </div>
 
@@ -611,7 +662,7 @@ export default function EvaluationsPage() {
           {/* Rincian Poin */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3 mt-5 pt-5 border-t border-teal-100">
             <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
-              <span className="text-[11px] text-slate-500 block mb-1">Check-In (Max 20)</span>
+              <span className="text-[11px] text-slate-500 block mb-1">Presensi (Max 20)</span>
               <span className="text-base font-bold text-teal-700">{myEvaluation.attendance_points} Poin</span>
               <span className="text-[10px] text-slate-400 block mt-0.5">Kehadiran agenda</span>
             </div>
@@ -621,9 +672,9 @@ export default function EvaluationsPage() {
               <span className="text-[10px] text-slate-400 block mt-0.5">Tepat waktu (on-time)</span>
             </div>
             <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
-              <span className="text-[11px] text-slate-500 block mb-1">Check-Out (Max 10)</span>
+              <span className="text-[11px] text-slate-500 block mb-1">Bebas Alpa (Max 10)</span>
               <span className="text-base font-bold text-blue-700">{myEvaluation.task_completion_points} Poin</span>
-              <span className="text-[10px] text-slate-400 block mt-0.5">Sesi lengkap / dispensasi</span>
+              <span className="text-[10px] text-slate-400 block mt-0.5">Kepatuhan kehadiran</span>
             </div>
             <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-xs">
               <span className="text-[11px] text-slate-500 block mb-1">Koordinator (Max 60)</span>
@@ -632,14 +683,53 @@ export default function EvaluationsPage() {
             </div>
           </div>
 
+          {/* Histori Kedisiplinan & Rekap Presensi Panitia */}
+          <div className="mt-4 pt-4 border-t border-teal-100">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-teal-900 block mb-2">
+              Histori Kedisiplinan & Presensi Anda:
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200">
+                <span className="text-[10px] text-emerald-800 font-semibold block">🟢 Tepat Waktu</span>
+                <span className="text-base font-extrabold text-emerald-900">{myOnTimeCount} Kegiatan</span>
+                <span className="text-[9px] text-emerald-700 block mt-0.5">+100% Poin Hadir & On-Time</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                <span className="text-[10px] text-amber-800 font-semibold block">🔴 Terlambat</span>
+                <span className="text-base font-extrabold text-amber-900">{myLateCount} Kegiatan</span>
+                <span className="text-[9px] text-amber-700 block mt-0.5">+ Poin Hadir, 0 On-Time</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-200">
+                <span className="text-[10px] text-purple-800 font-semibold block">🟣 Izin / Dispensasi</span>
+                <span className="text-base font-extrabold text-purple-900">{myExcusedCount} Kegiatan</span>
+                <span className="text-[9px] text-purple-700 block mt-0.5">Dispensasi Sah (Poin Aman)</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200">
+                <span className="text-[10px] text-rose-800 font-semibold block">🔴 Alpa</span>
+                <span className="text-base font-extrabold text-rose-900">{myAlpaCount} Kegiatan</span>
+                <span className="text-[9px] text-rose-700 block mt-0.5">0 Poin (Memotong Nilai)</span>
+              </div>
+            </div>
+          </div>
+
           <div className="mt-4 flex items-center justify-between flex-wrap gap-2 pt-2 border-t border-teal-100/60">
-            <button
-              onClick={() => openDetailModal(myEvaluation)}
-              className="text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold px-3.5 py-2 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
-            >
-              <Eye className="w-3.5 h-3.5" />
-              <span>Lihat Rincian Lengkap Transkrip</span>
-            </button>
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setShowMyAttendanceList(!showMyAttendanceList)}
+                className="text-xs bg-white hover:bg-teal-50 text-teal-800 border border-teal-200 font-semibold px-3.5 py-2 rounded-xl transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5 text-teal-600" />
+                <span>{showMyAttendanceList ? 'Sembunyikan Rincian per Agenda' : 'Lihat Histori Lengkap per Agenda'}</span>
+              </button>
+              <button
+                onClick={() => openDetailModal(myEvaluation)}
+                className="text-xs bg-teal-600 hover:bg-teal-700 text-white font-semibold px-3.5 py-2 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <Eye className="w-3.5 h-3.5" />
+                <span>Modal Audit Transkrip</span>
+              </button>
+            </div>
             <Link
               href="/dashboard/clarifications"
               className="text-xs text-slate-500 hover:text-amber-700 flex items-center gap-1.5 transition-colors font-medium"
@@ -648,6 +738,69 @@ export default function EvaluationsPage() {
               Merasa ada kekeliruan? Ajukan Sanggahan Nilai
             </Link>
           </div>
+
+          {showMyAttendanceList && (
+            <div className="mt-3.5 pt-3.5 border-t border-teal-100 space-y-2">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-teal-900 block">
+                Histori Kehadiran & Transparansi Poin per Agenda Anda:
+              </span>
+              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                {myAttendanceLogs.map((item) => {
+                  const act = item.activity;
+                  const att = getLogAtt(item);
+                  const isExcused = item.assignment_status === 'excused';
+                  const isCheckedIn = Boolean(att?.check_in_at);
+                  const toleranceDeadline = act?.check_in_closes_at || act?.start_at;
+                  const isGraceOver = Boolean(
+                    act?.activity_status === 'completed' ||
+                    (toleranceDeadline && new Date().getTime() > new Date(toleranceDeadline).getTime() + 2 * 60 * 60 * 1000)
+                  );
+
+                  return (
+                    <div key={item.id} className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs">
+                      <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+                        <span className="font-semibold text-slate-900">{act?.activity_name}</span>
+                        <span className="font-mono text-[10px] text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
+                          {act?.activity_code}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] flex-wrap">
+                        {isExcused ? (
+                          <span className="text-purple-700 font-semibold bg-purple-50 border border-purple-200 px-2 py-0.5 rounded">
+                            🟣 Izin Resmi Disetujui • Nilai Terlindungi Penuh (+100% Poin)
+                          </span>
+                        ) : isCheckedIn ? (
+                          att?.check_in_status === 'on_time' ? (
+                            <span className="text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                              🟢 Tepat Waktu ({formatTimeWITA(att.check_in_at)}) • Poin Maksimal (Hadir + On-Time + Bebas Alpa)
+                            </span>
+                          ) : (
+                            <span className="text-amber-800 font-semibold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                              🔴 Terlambat ({formatTimeWITA(att?.check_in_at)}) • Poin Hadir & Bebas Alpa, 0 Poin On-Time
+                            </span>
+                          )
+                        ) : isGraceOver ? (
+                          <span className="text-rose-700 font-bold bg-rose-50 border border-rose-300 px-2 py-0.5 rounded">
+                            🔴 Alpa (Tidak Hadir & Lewat Batas 2 Jam) • 0 Poin
+                          </span>
+                        ) : (
+                          <span className="text-amber-700 font-medium bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                            🟡 Belum Check-in (Sesi Masih Berlangsung)
+                          </span>
+                        )}
+                      </div>
+                      {item.cancellation_reason && (
+                        <p className="text-[10px] text-purple-700 italic mt-1">Alasan Izin: {item.cancellation_reason}</p>
+                      )}
+                      {att?.attendance_note && (
+                        <p className="text-[10px] text-slate-500 italic mt-0.5">Catatan: {att.attendance_note}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
@@ -1284,7 +1437,7 @@ export default function EvaluationsPage() {
                     40%
                   </div>
                   <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wide">
-                    Akumulasi Presensi Sistem (Check-In & Check-Out)
+                    Akumulasi Presensi Sistem (Maks 40 Poin)
                   </h4>
                 </div>
                 <span className="text-sm font-black text-teal-700">
@@ -1294,7 +1447,7 @@ export default function EvaluationsPage() {
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-3">
                 <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-[10px] text-slate-500 block">Presensi Check-In (Max 20)</span>
+                  <span className="text-[10px] text-slate-500 block">Presensi Kehadiran (Max 20)</span>
                   <span className="text-sm font-bold text-teal-800">{selectedEvalForDetail.attendance_points} Poin</span>
                   <span className="text-[9px] text-slate-400 block mt-0.5">Kehadiran agenda</span>
                 </div>
@@ -1304,16 +1457,71 @@ export default function EvaluationsPage() {
                   <span className="text-[9px] text-slate-400 block mt-0.5">Tepat waktu (on-time)</span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="text-[10px] text-slate-500 block">Presensi Check-Out (Max 10)</span>
+                  <span className="text-[10px] text-slate-500 block">Kepatuhan Bebas Alpa (Max 10)</span>
                   <span className="text-sm font-bold text-blue-800">{selectedEvalForDetail.task_completion_points} Poin</span>
-                  <span className="text-[9px] text-slate-400 block mt-0.5">Sesi lengkap / dispensasi</span>
+                  <span className="text-[9px] text-slate-400 block mt-0.5">Bebas alpa / izin resmi</span>
                 </div>
               </div>
 
-              {/* Log Rincian Presensi & Status Kepulangan per Agenda */}
+              {/* Log Rincian Presensi per Agenda */}
               <div className="pt-2.5 border-t border-slate-100">
+                {/* 4-Pill Summary Kedisiplinan Panitia */}
+                {(() => {
+                  const modalOnTimeCount = detailAttendanceLogs.filter((a) => {
+                    const att = getLogAtt(a);
+                    return att?.check_in_status === 'on_time' && a.assignment_status !== 'excused';
+                  }).length;
+                  const modalLateCount = detailAttendanceLogs.filter((a) => {
+                    const att = getLogAtt(a);
+                    return att?.check_in_status === 'late' && a.assignment_status !== 'excused';
+                  }).length;
+                  const modalExcusedCount = detailAttendanceLogs.filter((a) => a.assignment_status === 'excused').length;
+                  const modalAlpaCount = detailAttendanceLogs.filter((a) => {
+                    if (a.assignment_status === 'excused') return false;
+                    const att = getLogAtt(a);
+                    if (att?.check_in_at) return false;
+                    const act = a.activity;
+                    const toleranceDeadline = act?.check_in_closes_at || act?.start_at;
+                    const isGraceOver = Boolean(
+                      act?.activity_status === 'completed' ||
+                      (toleranceDeadline && new Date().getTime() > new Date(toleranceDeadline).getTime() + 2 * 60 * 60 * 1000)
+                    );
+                    return isGraceOver;
+                  }).length;
+
+                  return (
+                    <div className="mb-3">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1.5">
+                        Rekapitulasi Kedisiplinan Kehadiran:
+                      </span>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                        <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-200">
+                          <span className="text-[10px] text-emerald-800 font-semibold block">🟢 Tepat Waktu</span>
+                          <span className="text-sm font-bold text-emerald-900">{modalOnTimeCount} Kegiatan</span>
+                          <span className="text-[9px] text-emerald-700 block mt-0.5">+100% Poin Hadir & On-Time</span>
+                        </div>
+                        <div className="p-2 rounded-xl bg-amber-50 border border-amber-200">
+                          <span className="text-[10px] text-amber-800 font-semibold block">🔴 Terlambat</span>
+                          <span className="text-sm font-bold text-amber-900">{modalLateCount} Kegiatan</span>
+                          <span className="text-[9px] text-amber-700 block mt-0.5">+ Poin Hadir, 0 On-Time</span>
+                        </div>
+                        <div className="p-2 rounded-xl bg-purple-50 border border-purple-200">
+                          <span className="text-[10px] text-purple-800 font-semibold block">🟣 Izin / Sakit</span>
+                          <span className="text-sm font-bold text-purple-900">{modalExcusedCount} Kegiatan</span>
+                          <span className="text-[9px] text-purple-700 block mt-0.5">Dispensasi Sah (Poin Aman)</span>
+                        </div>
+                        <div className="p-2 rounded-xl bg-rose-50 border border-rose-200">
+                          <span className="text-[10px] text-rose-800 font-semibold block">🔴 Alpa</span>
+                          <span className="text-sm font-bold text-rose-900">{modalAlpaCount} Kegiatan</span>
+                          <span className="text-[9px] text-rose-700 block mt-0.5">0 Poin (Memotong Nilai)</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-2">
-                  Audit Log Presensi & Status Kepulangan per Agenda:
+                  Audit Log Presensi per Agenda:
                 </span>
                 {loadingDetailLogs ? (
                   <div className="space-y-2 py-1">
@@ -1335,15 +1543,17 @@ export default function EvaluationsPage() {
                     Belum ada riwayat penugasan agenda aktif untuk panitia ini.
                   </div>
                 ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                     {detailAttendanceLogs.map((item) => {
                       const act = item.activity;
-                      const att = Array.isArray(item.attendances) ? item.attendances[0] : item.attendances;
+                      const att = getLogAtt(item);
+                      const isExcused = item.assignment_status === 'excused';
                       const isCheckedIn = Boolean(att?.check_in_at);
-                      const isCheckedOut = Boolean(att?.check_out_at);
-                      const checkOutDeadline = act?.check_out_closes_at || act?.end_at;
-                      const isPastDeadline = Boolean(checkOutDeadline && new Date() > new Date(checkOutDeadline));
-                      const isDispensasi = att?.check_out_method === 'manual' || (att?.attendance_note && att.attendance_note.toLowerCase().includes('disetujui'));
+                      const toleranceDeadline = act?.check_in_closes_at || act?.start_at;
+                      const isGraceOver = Boolean(
+                        act?.activity_status === 'completed' ||
+                        (toleranceDeadline && new Date().getTime() > new Date(toleranceDeadline).getTime() + 2 * 60 * 60 * 1000)
+                      );
 
                       return (
                         <div key={item.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
@@ -1353,49 +1563,39 @@ export default function EvaluationsPage() {
                               {act?.activity_code}
                             </span>
                           </div>
-                          <div className="flex items-center gap-2.5 text-[11px] text-slate-600 flex-wrap">
-                            <span>
-                              Masuk:{' '}
-                              {isCheckedIn ? (
-                                <strong className={att.check_in_status === 'on_time' ? 'text-emerald-700' : 'text-amber-700'}>
-                                  {formatTimeWITA(att.check_in_at)} ({att.check_in_status === 'on_time' ? 'Tepat Waktu' : 'Terlambat'})
-                                </strong>
-                              ) : (
-                                <span className="text-amber-700 font-medium">Belum Check-in</span>
-                              )}
-                            </span>
-                            <span>&bull;</span>
-                            <span>
-                              Pulang:{' '}
-                              {isCheckedOut ? (
-                                <strong className={att.check_out_status === 'early_departure' && !isDispensasi ? 'text-amber-700' : 'text-emerald-700'}>
-                                  {formatTimeWITA(att.check_out_at)}{' '}
-                                  {isDispensasi ? (
-                                    <span className="text-teal-700 font-bold bg-teal-50 border border-teal-200 px-1 py-0.5 rounded text-[10px]">
-                                      Disetujui Dispensasi
-                                    </span>
-                                  ) : att.check_out_status === 'early_departure' ? (
-                                    <span className="text-amber-800 font-bold bg-amber-50 border border-amber-300 px-1 py-0.5 rounded text-[10px]">
-                                      Mendahului
-                                    </span>
-                                  ) : (
-                                    <span className="text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-1 py-0.5 rounded text-[10px]">
-                                      Sesuai Jadwal
-                                    </span>
-                                  )}
-                                </strong>
-                              ) : isCheckedIn && isPastDeadline ? (
-                                <span className="text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1 py-0.5 rounded text-[10px]">
-                                  Tidak Check-out (Melewati Batas)
+                          <div className="flex items-center gap-2 text-[11px] flex-wrap">
+                            {isExcused ? (
+                              <span className="text-purple-700 font-semibold bg-purple-50 border border-purple-200 px-2 py-0.5 rounded">
+                                🟣 Izin Resmi Disetujui • Nilai Terlindungi Penuh (+100% Poin)
+                              </span>
+                            ) : isCheckedIn ? (
+                              att.check_in_status === 'on_time' ? (
+                                <span className="text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                                  🟢 Tepat Waktu ({formatTimeWITA(att.check_in_at)}) • Poin Maksimal (Kehadiran: +20, On-Time: +10, Bebas Alpa: +10)
                                 </span>
                               ) : (
-                                <span className="text-slate-400">-</span>
-                              )}
-                            </span>
+                                <span className="text-amber-800 font-semibold bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                                  🔴 Terlambat ({formatTimeWITA(att?.check_in_at)}) • Poin Hadir (+20) & Bebas Alpa (+10), 0 Poin On-Time
+                                </span>
+                              )
+                            ) : isGraceOver ? (
+                              <span className="text-rose-700 font-bold bg-rose-50 border border-rose-300 px-2 py-0.5 rounded">
+                                🔴 Alpa (Tidak Hadir & Melewati Batas 2 Jam) • 0 Poin (Memotong Nilai Bebas Alpa)
+                              </span>
+                            ) : (
+                              <span className="text-amber-700 font-medium bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                                🟡 Belum Check-in (Sesi Masih Berlangsung)
+                              </span>
+                            )}
                           </div>
                           {att?.attendance_note && (
                             <p className="text-[10px] text-slate-500 italic mt-1 bg-white/70 p-1 rounded border border-slate-200/60">
                               Catatan: {att.attendance_note}
+                            </p>
+                          )}
+                          {item.cancellation_reason && (
+                            <p className="text-[10px] text-purple-700 italic mt-1 bg-purple-50/70 p-1 rounded border border-purple-200/60">
+                              Alasan Izin: {item.cancellation_reason}
                             </p>
                           )}
                         </div>

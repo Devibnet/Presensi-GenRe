@@ -51,6 +51,7 @@ export default function ReportsPage() {
     totalActivities: 0,
     totalAssignedActivities: 0,
     totalPresentActivities: 0,
+    totalExcusedActivities: 0,
     totalOnTimeActivities: 0,
     overallAttendanceRate: 0.0,
     overallOnTimeRate: 0.0,
@@ -271,7 +272,8 @@ export default function ReportsPage() {
       'Panitia Ditugaskan',
       'Tepat Waktu',
       'Terlambat',
-      'Izin/Alpa',
+      'Izin/Dispensasi',
+      'Alpa/Belum Hadir',
       'Persentase Hadir'
     ];
     const rows = activitySummaries.map((a) => [
@@ -283,7 +285,8 @@ export default function ReportsPage() {
       a.total_assigned,
       a.total_on_time,
       a.total_late,
-      a.total_absent_or_excused,
+      a.total_excused ?? 0,
+      a.total_absent ?? Math.max(0, a.total_assigned - a.total_checked_in - (a.total_excused ?? 0)),
       `"${a.attendance_rate}%"`
     ]);
 
@@ -869,11 +872,17 @@ export default function ReportsPage() {
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-slate-600">Izin / Sakit / Alpa:</span>
+                      <span className="text-slate-600">Izin / Dispensasi:</span>
+                      <span className="font-bold text-purple-700">
+                        {overview.totalExcusedActivities || 0}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-600">Alpa / Belum Hadir:</span>
                       <span className="font-bold text-rose-700">
-                        {Math.max(0, overview.totalAssignedActivities - overview.totalPresentActivities)} (
+                        {Math.max(0, overview.totalAssignedActivities - overview.totalPresentActivities - (overview.totalExcusedActivities || 0))} (
                         {overview.totalAssignedActivities > 0
-                          ? (((overview.totalAssignedActivities - overview.totalPresentActivities) / overview.totalAssignedActivities) * 100).toFixed(1)
+                          ? (((Math.max(0, overview.totalAssignedActivities - overview.totalPresentActivities - (overview.totalExcusedActivities || 0))) / overview.totalAssignedActivities) * 100).toFixed(1)
                           : '0.0'}%)
                       </span>
                     </div>
@@ -897,10 +906,10 @@ export default function ReportsPage() {
               <div>
                 <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <Building className="h-4 w-4 text-teal-600" />
-                  Rekapitulasi Kinerja per Divisi / Bidang Kepanitiaan
+                  Kinerja Seluruh Divisi Kepanitiaan ({fieldSummaries.length} Divisi)
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Agregasi terpadu nilai sistem, evaluasi koordinator, dan kelulusan per divisi
+                  Rincian panitia dan capaian nilai dari seluruh 12 divisi resmi (Total {overview.totalMembers} Panitia)
                 </p>
               </div>
 
@@ -925,7 +934,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {fieldSummaries.slice(0, 6).map((f, i) => (
+                  {fieldSummaries.map((f, i) => (
                     <tr key={i} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-4 py-3.5">
                         <button
@@ -975,6 +984,35 @@ export default function ReportsPage() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-slate-900 text-xs">
+                  <tr>
+                    <td colSpan={2} className="px-4 py-3 text-left">
+                      <div className="font-extrabold text-slate-900">Total Keseluruhan Panitia</div>
+                      <div className="text-[10px] text-slate-500 font-normal">Seluruh {fieldSummaries.length} Divisi Kepanitiaan</div>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="px-2.5 py-1 rounded-lg bg-teal-700 text-white font-extrabold text-xs shadow-2xs">
+                        {fieldSummaries.reduce((acc, f) => acc + f.total_members, 0)} Orang
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center font-bold text-teal-800">
+                      {overview.totalMembers > 0 
+                        ? (fieldSummaries.reduce((acc, f) => acc + (f.average_system_score * f.total_members), 0) / overview.totalMembers).toFixed(2)
+                        : '0.00'} / 40
+                    </td>
+                    <td className="px-4 py-3 text-center font-extrabold text-slate-900">
+                      <span className="px-2 py-0.5 rounded-lg bg-teal-100 border border-teal-300 text-teal-900 font-mono">
+                        {overview.averageFinalScore} / 100
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      <span className="font-bold text-emerald-700">{overview.overallEligibilityPercentage}%</span>
+                      <div className="text-[10px] text-slate-500">
+                        ({overview.totalEligible} dari {overview.totalMembers} layak)
+                      </div>
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           </Card>
@@ -1113,6 +1151,41 @@ export default function ReportsPage() {
                   ))
                 )}
               </tbody>
+              <tfoot className="bg-slate-100/90 border-t-2 border-slate-300 font-bold text-slate-900 text-xs">
+                <tr>
+                  <td colSpan={2} className="px-4 py-3 text-left">
+                    <div className="font-extrabold text-slate-900">Total Keseluruhan Panitia</div>
+                    <div className="text-[10px] text-slate-500 font-normal">Seluruh {fieldSummaries.length} Divisi Kepanitiaan</div>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="px-2.5 py-1 rounded-lg bg-teal-700 text-white font-extrabold text-xs shadow-2xs">
+                      {fieldSummaries.reduce((acc, f) => acc + f.total_members, 0)} Orang
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center font-bold text-teal-800">
+                    {overview.totalMembers > 0 
+                      ? (fieldSummaries.reduce((acc, f) => acc + (f.average_system_score * f.total_members), 0) / overview.totalMembers).toFixed(2)
+                      : '0.00'} / 40
+                  </td>
+                  <td className="px-4 py-3 text-center font-bold text-blue-800">
+                    {overview.totalMembers > 0 
+                      ? (fieldSummaries.reduce((acc, f) => acc + (f.average_coordinator_score * f.total_members), 0) / overview.totalMembers).toFixed(2)
+                      : '0.00'} / 60
+                  </td>
+                  <td className="px-4 py-3 text-center font-extrabold text-slate-900">
+                    <span className="px-2 py-0.5 rounded-lg bg-teal-100 border border-teal-300 text-teal-900 font-mono">
+                      {overview.averageFinalScore} / 100
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <div className="flex flex-col items-center">
+                      <span className="font-bold text-emerald-700">{overview.overallEligibilityPercentage}%</span>
+                      <span className="text-[10px] text-slate-500">({overview.totalEligible} dari {overview.totalMembers} layak)</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 print:hidden"></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
         </Card>
@@ -1367,7 +1440,8 @@ export default function ReportsPage() {
                   <th className="px-4 py-3 text-center">Ditugaskan</th>
                   <th className="px-4 py-3 text-center">Tepat Waktu</th>
                   <th className="px-4 py-3 text-center">Terlambat</th>
-                  <th className="px-4 py-3 text-center">Izin / Alpa</th>
+                  <th className="px-4 py-3 text-center">Izin</th>
+                  <th className="px-4 py-3 text-center">Alpa</th>
                   <th className="px-4 py-3 text-center">Persentase Hadir</th>
                   <th className="px-3 py-3 text-center print:hidden">Aksi</th>
                 </tr>
@@ -1375,7 +1449,7 @@ export default function ReportsPage() {
               <tbody className="divide-y divide-slate-100">
                 {activitySummaries.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="text-center py-8 text-slate-500">
+                    <td colSpan={10} className="text-center py-8 text-slate-500">
                       Belum ada data agenda kegiatan tercatat.
                     </td>
                   </tr>
@@ -1408,8 +1482,12 @@ export default function ReportsPage() {
                         {act.total_late}
                       </td>
 
-                      <td className="px-4 py-3.5 text-center font-medium text-rose-700">
-                        {act.total_absent_or_excused}
+                      <td className="px-4 py-3.5 text-center font-medium text-purple-700 bg-purple-50/30">
+                        {act.total_excused ?? 0}
+                      </td>
+
+                      <td className="px-4 py-3.5 text-center font-medium text-rose-700 bg-rose-50/30">
+                        {act.total_absent ?? Math.max(0, act.total_assigned - act.total_checked_in - (act.total_excused ?? 0))}
                       </td>
 
                       <td className="px-4 py-3.5 text-center">

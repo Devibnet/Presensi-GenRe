@@ -68,6 +68,7 @@ export function Sidebar({
         { label: 'Sanggahan & Klarifikasi', href: '/dashboard/clarifications', icon: HelpCircle, roles: ['admin', 'coordinator', 'member'] },
         { label: 'Sertifikat Kelulusan', href: '/dashboard/certificates', icon: Award, roles: ['admin', 'coordinator', 'member'] },
         { label: 'Laporan & Statistik', href: '/dashboard/reports', icon: BarChart3, roles: ['admin', 'coordinator'] },
+        { label: 'Log Aktivitas (Audit)', href: '/dashboard/audit-logs', icon: ShieldCheck, roles: ['admin', 'coordinator'] },
       ]
     }
   ];

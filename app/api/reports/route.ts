@@ -155,7 +155,7 @@ export async function GET(request: Request) {
       actSummaryMap.set(as.activity_id, as);
     });
 
-    // Jika view kosong atau belum terisi, hitung manual dari activity_assignments & attendances
+    // Ambil seluruh penugasan non-cancelled untuk rekapitulasi akurat
     const { data: rawAssignments } = await supabaseAdmin
       .from('activity_assignments')
       .select(`
@@ -173,24 +173,31 @@ export async function GET(request: Request) {
       `)
       .neq('assignment_status', 'cancelled');
 
-    const activityStatsMap = new Map<string, { assigned: number; onTime: number; late: number; attended: number; absent: number }>();
+    const activityStatsMap = new Map<
+      string,
+      { assigned: number; onTime: number; late: number; attended: number; excused: number; absent: number }
+    >();
     (rawAssignments || []).forEach((asg) => {
       if (!activityStatsMap.has(asg.activity_id)) {
-        activityStatsMap.set(asg.activity_id, { assigned: 0, onTime: 0, late: 0, attended: 0, absent: 0 });
+        activityStatsMap.set(asg.activity_id, { assigned: 0, onTime: 0, late: 0, attended: 0, excused: 0, absent: 0 });
       }
       const st = activityStatsMap.get(asg.activity_id)!;
       st.assigned++;
 
       const atts = asg.attendances as any[];
-      const approvedAtt = atts?.find((a) => a.verification_status === 'approved' && a.check_in_at);
+      const approvedAtt = atts?.find((a) => a.check_in_at && (a.verification_status === 'approved' || !a.verification_status));
       const isExcused = asg.assignment_status === 'excused';
 
-      if (approvedAtt || isExcused) {
+      if (isExcused) {
+        st.excused++;
+      } else if (approvedAtt) {
         st.attended++;
-        if ((approvedAtt && approvedAtt.check_in_status === 'on_time') || isExcused) {
+        if (approvedAtt.check_in_status === 'on_time') {
           st.onTime++;
-        } else if (approvedAtt && approvedAtt.check_in_status === 'late') {
+        } else if (approvedAtt.check_in_status === 'late') {
           st.late++;
+        } else {
+          st.onTime++;
         }
       } else {
         st.absent++;
@@ -198,15 +205,18 @@ export async function GET(request: Request) {
     });
 
     const enrichedActivities = activitiesList.map((act) => {
-      const fromView = actSummaryMap.get(act.id);
-      const fromManual = activityStatsMap.get(act.id) || { assigned: 0, onTime: 0, late: 0, attended: 0, absent: 0 };
+      const stats = activityStatsMap.get(act.id) || { assigned: 0, onTime: 0, late: 0, attended: 0, excused: 0, absent: 0 };
 
-      const totalAssigned = fromView ? Number(fromView.total_assigned_members || 0) : fromManual.assigned;
-      const totalOnTime = fromView ? Number(fromView.total_on_time || 0) : fromManual.onTime;
-      const totalLate = fromView ? Number(fromView.total_late || 0) : fromManual.late;
-      const totalAttended = fromView ? Number(fromView.total_checked_in || 0) : fromManual.attended;
-      const totalAbsent = totalAssigned > totalAttended ? totalAssigned - totalAttended : 0;
-      const attendanceRate = totalAssigned > 0 ? Number(((totalAttended / totalAssigned) * 100).toFixed(1)) : 0;
+      const totalAssigned = stats.assigned;
+      const totalOnTime = stats.onTime;
+      const totalLate = stats.late;
+      const totalAttended = stats.attended;
+      const totalExcused = stats.excused;
+      const totalAbsent = stats.absent;
+
+      // Persentase kehadiran dihitung dari panitia yang wajib hadir secara fisik (total ditugaskan - dispensasi resmi)
+      const effectiveAssigned = totalAssigned - totalExcused > 0 ? totalAssigned - totalExcused : totalAssigned;
+      const attendanceRate = effectiveAssigned > 0 ? Number(((totalAttended / effectiveAssigned) * 100).toFixed(1)) : 0;
 
       return {
         id: act.id,
@@ -222,7 +232,9 @@ export async function GET(request: Request) {
         total_on_time: totalOnTime,
         total_late: totalLate,
         total_checked_in: totalAttended,
-        total_absent_or_excused: totalAbsent,
+        total_excused: totalExcused,
+        total_absent: totalAbsent,
+        total_absent_or_excused: totalAbsent + totalExcused,
         attendance_rate: attendanceRate,
       };
     });
@@ -324,9 +336,11 @@ export async function GET(request: Request) {
 
     const totalAssignedActivities = enrichedActivities.reduce((acc, a) => acc + a.total_assigned, 0);
     const totalPresentActivities = enrichedActivities.reduce((acc, a) => acc + a.total_checked_in, 0);
+    const totalExcusedActivities = enrichedActivities.reduce((acc, a) => acc + (a.total_excused || 0), 0);
     const totalOnTimeActivities = enrichedActivities.reduce((acc, a) => acc + a.total_on_time, 0);
-    const overallAttRate = totalAssignedActivities > 0
-      ? Number(((totalPresentActivities / totalAssignedActivities) * 100).toFixed(1))
+    const totalEffectiveAssigned = totalAssignedActivities - totalExcusedActivities;
+    const overallAttRate = totalEffectiveAssigned > 0
+      ? Number(((totalPresentActivities / totalEffectiveAssigned) * 100).toFixed(1))
       : 0.0;
     const overallOnTimeRate = totalPresentActivities > 0
       ? Number(((totalOnTimeActivities / totalPresentActivities) * 100).toFixed(1))
@@ -353,6 +367,7 @@ export async function GET(request: Request) {
         totalActivities: enrichedActivities.length,
         totalAssignedActivities,
         totalPresentActivities,
+        totalExcusedActivities,
         totalOnTimeActivities,
         overallAttendanceRate: overallAttRate,
         overallOnTimeRate: overallOnTimeRate,

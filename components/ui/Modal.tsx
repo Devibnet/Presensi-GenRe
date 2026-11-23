@@ -62,7 +62,7 @@ export function Modal({
         {/* Modal Dialog Card */}
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`relative w-full ${maxWidth} max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3.5rem)] bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden text-left my-auto`}
+          className={`relative z-10 w-full ${maxWidth} max-h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-3.5rem)] bg-white rounded-2xl sm:rounded-3xl border border-slate-200 shadow-2xl flex flex-col overflow-hidden text-left my-auto`}
           role="dialog"
           aria-modal="true"
         >

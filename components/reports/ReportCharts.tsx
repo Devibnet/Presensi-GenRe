@@ -66,6 +66,8 @@ export interface ActivitySummaryData {
   total_on_time: number;
   total_late: number;
   total_checked_in: number;
+  total_excused?: number;
+  total_absent?: number;
   total_absent_or_excused: number;
   attendance_rate: number;
 }
@@ -812,7 +814,7 @@ export function ActivityAttendanceColumnChart({
         </div>
 
         {/* Legend */}
-        <div className="flex items-center gap-3 text-xs self-start sm:self-auto">
+        <div className="flex items-center gap-3 text-xs self-start sm:self-auto flex-wrap">
           <span className="flex items-center gap-1.5 text-slate-600">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Tepat Waktu
           </span>
@@ -820,7 +822,10 @@ export function ActivityAttendanceColumnChart({
             <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Terlambat
           </span>
           <span className="flex items-center gap-1.5 text-slate-600">
-            <span className="w-2.5 h-2.5 rounded-full bg-slate-200" /> Alpa/Izin
+            <span className="w-2.5 h-2.5 rounded-full bg-purple-400" /> Izin
+          </span>
+          <span className="flex items-center gap-1.5 text-slate-600">
+            <span className="w-2.5 h-2.5 rounded-full bg-slate-200" /> Alpa
           </span>
         </div>
       </div>
@@ -857,10 +862,12 @@ export function ActivityAttendanceColumnChart({
                 const attended = act.total_checked_in || 0;
                 const onTime = act.total_on_time || 0;
                 const late = act.total_late || 0;
+                const excused = act.total_excused || 0;
                 const rate = act.attendance_rate || 0;
 
                 const onTimePct = total > 0 ? (onTime / total) * 100 : 0;
                 const latePct = total > 0 ? (late / total) * 100 : 0;
+                const excusedPct = total > 0 ? (excused / total) * 100 : 0;
 
                 const isHovered = activeActId === act.id;
 
@@ -887,6 +894,15 @@ export function ActivityAttendanceColumnChart({
 
                     {/* Column Bar with fixed height scale (140px max) */}
                     <div className="relative w-7 sm:w-9 h-[140px] bg-slate-100 rounded-t-xl overflow-hidden flex flex-col justify-end group-hover:ring-2 group-hover:ring-teal-500 transition-all">
+                      {/* Excused Portion (Purple) */}
+                      {excusedPct > 0 && (
+                        <div
+                          className="w-full bg-purple-400 transition-all duration-500"
+                          style={{ height: `${excusedPct}%` }}
+                          title={`Izin / Dispensasi: ${excused} panitia`}
+                        />
+                      )}
+
                       {/* Late Portion (Amber) */}
                       {latePct > 0 && (
                         <div
@@ -950,8 +966,14 @@ export function ActivityAttendanceColumnChart({
               <span className="font-bold text-sm text-white">{activeActivity.total_late}</span>
             </div>
             <div>
-              <span className="text-[10px] text-rose-400 block">Alpa / Izin</span>
-              <span className="font-bold text-sm text-white">{activeActivity.total_absent_or_excused}</span>
+              <span className="text-[10px] text-purple-400 block">Izin</span>
+              <span className="font-bold text-sm text-white">{activeActivity.total_excused ?? 0}</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-rose-400 block">Alpa</span>
+              <span className="font-bold text-sm text-white">
+                {activeActivity.total_absent ?? Math.max(0, activeActivity.total_assigned - activeActivity.total_checked_in - (activeActivity.total_excused ?? 0))}
+              </span>
             </div>
             <div className="pl-3 border-l border-slate-700">
               <span className="text-[10px] text-teal-400 block">Persentase</span>

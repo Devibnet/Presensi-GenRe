@@ -14,6 +14,7 @@ export async function GET(request: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     const { searchParams } = new URL(request.url);
     const paramUserId = searchParams.get('userId');
+    const myOnly = searchParams.get('myOnly') === 'true';
 
     let currentUserId = user?.id || paramUserId;
     let currentUserRole = 'member';
@@ -53,8 +54,8 @@ export async function GET(request: Request) {
       `)
       .order('created_at', { ascending: false });
 
-    // Jika member biasa, hanya tampilkan permohonan yang diajukan oleh dirinya sendiri
-    if (currentUserRole === 'member' && currentUserId) {
+    // Jika myOnly=true ATAU user adalah member biasa, hanya tampilkan permohonan milik user tersebut
+    if ((myOnly || currentUserRole === 'member') && currentUserId) {
       query = query.eq('requested_by', currentUserId);
     }
 
@@ -101,6 +102,33 @@ export async function POST(request: Request) {
 
     if (!requesterId) {
       return NextResponse.json({ error: 'Identitas pemohon tidak ditemukan.' }, { status: 400 });
+    }
+
+    // 1. Cek apakah sudah ada permohonan yang berstatus pending untuk penugasan ini
+    const { data: existingPending } = await supabaseAdmin
+      .from('manual_attendance_requests')
+      .select('id, review_status')
+      .eq('activity_assignment_id', assignmentId)
+      .eq('review_status', 'pending')
+      .maybeSingle();
+
+    if (existingPending) {
+      return NextResponse.json({
+        error: 'Anda sudah memiliki permohonan presensi/izin yang sedang ditinjau untuk agenda ini. Silakan tunggu peninjauan Koordinator atau perbarui alasan pada riwayat pengajuan di bawah.',
+      }, { status: 400 });
+    }
+
+    // 2. Cek apakah anggota sudah tercatat hadir secara sah
+    const { data: existingAtt } = await supabaseAdmin
+      .from('attendances')
+      .select('id, check_in_at, verification_status')
+      .eq('activity_assignment_id', assignmentId)
+      .maybeSingle();
+
+    if (existingAtt && existingAtt.check_in_at && attendanceType !== 'check_out') {
+      return NextResponse.json({
+        error: 'Presensi Anda pada agenda ini sudah tercatat dan sah. Tidak perlu mengajukan permohonan manual.',
+      }, { status: 400 });
     }
 
     const nowIso = new Date().toISOString();

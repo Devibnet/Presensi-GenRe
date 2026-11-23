@@ -114,25 +114,16 @@ export default function ManageAttendancePage() {
             })
             .eq('id', assignmentId);
         } else {
-          // Evaluasi ketepatan waktu kedatangan jika permohonan check-in biasa
+          // Evaluasi ketepatan waktu kedatangan jika permohonan check-in presensi
           let isLate = false;
           if (act?.check_in_closes_at) {
             isLate = new Date(claimedTime) > new Date(act.check_in_closes_at);
           }
           const checkInStatus = isLate ? 'late' : 'on_time';
 
-          // Evaluasi kepulangan mendahului jika permohonan check-out
-          let isEarly = false;
-          if (act?.check_out_opens_at) {
-            isEarly = new Date(claimedTime) < new Date(act.check_out_opens_at);
-          } else if (act?.end_at) {
-            isEarly = new Date(claimedTime) < new Date(act.end_at);
-          }
-          const checkOutStatus = isEarly ? 'early_departure' : 'normal';
-
           const { data: existingAtt } = await supabase
             .from('attendances')
-            .select('id, check_in_at, check_out_at, attendance_note')
+            .select('id, check_in_at, check_in_status, attendance_note')
             .eq('activity_assignment_id', assignmentId)
             .maybeSingle();
 
@@ -143,25 +134,20 @@ export default function ManageAttendancePage() {
               verification_status: 'approved',
               verified_by: reviewerId,
               verified_at: nowIso,
+              check_in_at: existingAtt.check_in_at || claimedTime,
+              check_in_method: 'manual',
+              check_in_status: existingAtt.check_in_status || checkInStatus,
               attendance_note: existingAtt.attendance_note ? `${existingAtt.attendance_note} | ${noteText}` : noteText,
               updated_at: nowIso,
             };
-
-            if (attType === 'check_in' || attType === 'both') {
-              updatePayload.check_in_at = claimedTime;
-              updatePayload.check_in_method = 'manual';
-              updatePayload.check_in_status = checkInStatus;
-            }
-            if (attType === 'check_out' || attType === 'both') {
-              updatePayload.check_out_at = claimedTime;
-              updatePayload.check_out_method = 'manual';
-              updatePayload.check_out_status = checkOutStatus;
-            }
 
             await supabase.from('attendances').update(updatePayload).eq('id', existingAtt.id);
           } else {
             const insertPayload: any = {
               activity_assignment_id: assignmentId,
+              check_in_at: claimedTime,
+              check_in_method: 'manual',
+              check_in_status: checkInStatus,
               verification_status: 'approved',
               verified_by: reviewerId,
               verified_at: nowIso,
@@ -169,23 +155,6 @@ export default function ManageAttendancePage() {
               created_at: nowIso,
               updated_at: nowIso,
             };
-
-            if (attType === 'check_in' || attType === 'both') {
-              insertPayload.check_in_at = claimedTime;
-              insertPayload.check_in_method = 'manual';
-              insertPayload.check_in_status = checkInStatus;
-            } else {
-              // Jika hanya check-out tapi belum pernah check-in
-              insertPayload.check_in_at = claimedTime;
-              insertPayload.check_in_method = 'manual';
-              insertPayload.check_in_status = 'on_time';
-            }
-
-            if (attType === 'check_out' || attType === 'both') {
-              insertPayload.check_out_at = claimedTime;
-              insertPayload.check_out_method = 'manual';
-              insertPayload.check_out_status = checkOutStatus;
-            }
 
             await supabase.from('attendances').insert(insertPayload);
           }
@@ -286,8 +255,8 @@ export default function ManageAttendancePage() {
                     {(req.reason || '').toUpperCase().includes('[IZIN') || (req.reason || '').toUpperCase().includes('[DISPENSASI') ? (
                       <Badge status="excused" label="Permohonan Izin / Sakit" />
                     ) : (
-                      <span className="text-[10px] px-2 py-0.5 rounded font-mono font-semibold bg-slate-100 text-slate-700 border border-slate-200 uppercase">
-                        Presensi: {req.attendance_type || 'check_in'}
+                      <span className="text-[10px] px-2 py-0.5 rounded font-semibold bg-teal-50 text-teal-800 border border-teal-200">
+                        Presensi Kehadiran
                       </span>
                     )}
                   </div>

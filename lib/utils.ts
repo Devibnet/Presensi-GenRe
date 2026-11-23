@@ -150,7 +150,9 @@ export function getStatusBadgeClass(status: string): string {
     case 'returned':
     case 'revoked':
     case 'suspended':
-      return 'bg-rose-50 text-rose-700 border border-rose-200 font-semibold';
+    case 'alpa':
+    case 'absent':
+      return 'bg-rose-50 text-rose-700 border border-rose-300 font-bold';
     default:
       return 'bg-slate-100 text-slate-700 border border-slate-200 font-semibold';
   }

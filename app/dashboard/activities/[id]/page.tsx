@@ -35,8 +35,10 @@ import {
   Lock,
   FileText,
   Check,
-  Share2
+  Share2,
+  FileSpreadsheet
 } from 'lucide-react';
+import { exportActivityAttendanceToExcel } from '@/lib/export-activity-excel';
 import { ShareActivityModal } from '@/components/activities/ShareActivityModal';
 import QRCode from 'qrcode';
 import { Activity, ActivityAssignment, Profile, AttendanceSession, Field } from '@/lib/types';
@@ -68,6 +70,23 @@ export default function ActivityDetailPage() {
 
   // WhatsApp Share State
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+
+  // Export Excel State
+  const [exportingExcel, setExportingExcel] = useState(false);
+
+  const handleExportExcel = async () => {
+    if (!activity) return;
+    try {
+      setExportingExcel(true);
+      const filename = await exportActivityAttendanceToExcel(activity, assignments, fields);
+      toast.success('Ekspor Excel Berhasil', `File ${filename} telah terunduh dengan format profesional.`);
+    } catch (err: any) {
+      console.error('Export Excel error:', err);
+      toast.error('Gagal Ekspor Excel', err.message || 'Terjadi kesalahan saat memproses file Excel.');
+    } finally {
+      setExportingExcel(false);
+    }
+  };
 
   // Modal Konfirmasi Batalkan Penugasan (Mencegah Salah Klik)
   const [isRemoveAssignmentModalOpen, setIsRemoveAssignmentModalOpen] = useState(false);
@@ -436,8 +455,8 @@ export default function ActivityDetailPage() {
       ctx.font = 'bold 20px sans-serif';
       ctx.fillStyle = '#0d9488';
       ctx.fillText(`⏰ Toleransi On-Time Check-in: s.d. ${formatTimeWITA(activity.check_in_closes_at)} WITA`, 120, 455);
-      ctx.fillStyle = '#d97706';
-      ctx.fillText(`🚪 Jendela Check-out: ${formatTimeWITA(activity.check_out_opens_at)} - ${formatTimeWITA(activity.check_out_closes_at)} WITA`, 120, 485);
+      ctx.fillStyle = '#475569';
+      ctx.fillText(`⌛ Waktu Selesai Kegiatan: ${formatTimeWITA(activity.check_out_closes_at || activity.end_at)} WITA`, 120, 485);
 
       // Muat gambar QR Code ke canvas
       const qrImg = new Image();
@@ -588,6 +607,12 @@ export default function ActivityDetailPage() {
     return m.field_id === assignModalFieldFilter;
   });
 
+  // Anggota yang SUDAH ditugaskan di divisi yang sedang dipilih
+  const alreadyAssignedInField = allActiveMembers.filter(m => {
+    if (assignModalFieldFilter !== 'all' && m.field_id !== assignModalFieldFilter) return false;
+    return assignedMemberIdSet.has(m.id);
+  });
+
   // Toggle checklist anggota
   const toggleMemberSelection = (id: string) => {
     setSelectedMemberIds(prev => 
@@ -674,13 +699,12 @@ export default function ActivityDetailPage() {
     }
   };
 
-  // Catat Kehadiran / Kepulangan Cepat oleh Koordinator / Admin
-  const handleQuickAttendance = async (assignmentId: string, memberName: string, action: 'check_in' | 'check_out') => {
+  // Catat Kehadiran Cepat oleh Koordinator / Admin (Hanya Check-in)
+  const handleQuickAttendance = async (assignmentId: string, memberName: string) => {
     if (!canManage) {
       toast.error('Akses Ditolak', 'Hanya Koordinator dan Admin yang memiliki izin mencatat presensi panitia secara manual.');
       return;
     }
-    const actionLabel = action === 'check_in' ? 'Check-in (Masuk)' : 'Check-out (Pulang)';
 
     try {
       const nowIso = new Date().toISOString();
@@ -692,90 +716,44 @@ export default function ActivityDetailPage() {
 
       const assignerId = currentUser?.id || '11111111-0000-0000-0000-000000000001';
 
-      if (action === 'check_in') {
-        if (existingAtt && existingAtt.check_in_at) {
-          toast.warning('Sudah Check-in', `${memberName} sudah tercatat melakukan check-in sebelumnya pada pukul ${formatTimeWITA(existingAtt.check_in_at)}.`);
-          return;
-        }
+      if (existingAtt && existingAtt.check_in_at) {
+        toast.warning('Sudah Check-in', `${memberName} sudah tercatat melakukan check-in sebelumnya pada pukul ${formatTimeWITA(existingAtt.check_in_at)}.`);
+        return;
+      }
 
-        // Tentukan apakah terlambat
-        const checkInCloses = activity?.check_in_closes_at ? new Date(activity.check_in_closes_at) : null;
-        const isLate = checkInCloses ? new Date() > checkInCloses : false;
-        const checkInStatus = isLate ? 'late' : 'on_time';
-        const note = isLate ? 'Check-in manual (terlambat)' : 'Check-in manual (tepat waktu)';
+      // Tentukan apakah terlambat
+      const checkInCloses = activity?.check_in_closes_at ? new Date(activity.check_in_closes_at) : null;
+      const isLate = checkInCloses ? new Date() > checkInCloses : false;
+      const checkInStatus = isLate ? 'late' : 'on_time';
+      const note = isLate ? 'Check-in manual oleh Koordinator (terlambat)' : 'Check-in manual oleh Koordinator (tepat waktu)';
 
-        if (existingAtt) {
-          await supabase.from('attendances').update({
-            check_in_at: nowIso,
-            check_in_status: checkInStatus,
-            check_in_method: 'manual',
-            verification_status: 'approved',
-            verified_by: assignerId,
-            verified_at: nowIso,
-            attendance_note: note,
-            updated_at: nowIso,
-          }).eq('id', existingAtt.id);
-        } else {
-          await supabase.from('attendances').insert({
-            activity_assignment_id: assignmentId,
-            check_in_at: nowIso,
-            check_in_status: checkInStatus,
-            check_in_method: 'manual',
-            verification_status: 'approved',
-            verified_by: assignerId,
-            verified_at: nowIso,
-            attendance_note: note,
-          });
-        }
-      } else {
-        // check_out
-        if (!existingAtt || !existingAtt.check_in_at) {
-          toast.warning('Belum Check-in', `${memberName} belum tercatat melakukan check-in pada agenda ini.`);
-          return;
-        }
-
-        if (existingAtt.check_out_at) {
-          toast.warning('Sudah Check-out', `${memberName} sudah tercatat melakukan check-out sebelumnya pada pukul ${formatTimeWITA(existingAtt.check_out_at)}.`);
-          return;
-        }
-
-        // Tentukan apakah mendahului atau melewati jam check-out yang ditentukan
-        let isEarly = false;
-        let isPastDeadline = false;
-        let referenceTime = '';
-        const checkOutDeadline = activity?.check_out_closes_at || activity?.end_at;
-
-        if (activity?.check_out_opens_at) {
-          isEarly = new Date() < new Date(activity.check_out_opens_at);
-          referenceTime = formatTimeWITA(activity.check_out_opens_at);
-        } else if (activity?.end_at) {
-          isEarly = new Date() < new Date(activity.end_at);
-          referenceTime = formatTimeWITA(activity.end_at);
-        }
-
-        if (checkOutDeadline && new Date() > new Date(checkOutDeadline)) {
-          isPastDeadline = true;
-        }
-
-        const checkOutStatus = isEarly ? 'early_departure' : 'normal';
-        const note = isEarly 
-          ? `Check-out manual oleh Koordinator (Mendahului sebelum ${referenceTime})` 
-          : isPastDeadline
-          ? `Check-out susulan oleh Koordinator (Dikonfirmasi setelah batas waktu kegiatan)`
-          : 'Check-out manual oleh Koordinator (Sesuai jadwal)';
-
+      if (existingAtt) {
         await supabase.from('attendances').update({
-          check_out_at: nowIso,
-          check_out_status: checkOutStatus,
-          check_out_method: 'manual',
-          attendance_note: existingAtt.attendance_note ? `${existingAtt.attendance_note} | ${note}` : note,
+          check_in_at: nowIso,
+          check_in_status: checkInStatus,
+          check_in_method: 'manual',
+          verification_status: 'approved',
+          verified_by: assignerId,
+          verified_at: nowIso,
+          attendance_note: note,
           updated_at: nowIso,
         }).eq('id', existingAtt.id);
+      } else {
+        await supabase.from('attendances').insert({
+          activity_assignment_id: assignmentId,
+          check_in_at: nowIso,
+          check_in_status: checkInStatus,
+          check_in_method: 'manual',
+          verification_status: 'approved',
+          verified_by: assignerId,
+          verified_at: nowIso,
+          attendance_note: note,
+        });
       }
 
       toast.success(
-        `Presensi ${actionLabel} Berhasil`,
-        `Pencatatan presensi untuk ${memberName} berhasil disimpan dan diverifikasi.`
+        'Presensi Check-in Berhasil',
+        `Pencatatan presensi kehadiran untuk ${memberName} berhasil disimpan dan diverifikasi.`
       );
 
       // Cari member_id untuk penugasan ini dan kirim in-app notif
@@ -790,8 +768,8 @@ export default function ActivityDetailPage() {
 
         sendInAppNotification({
           userId: targetAssignment.member_id,
-          title: `Presensi Terverifikasi: ${actionLabel}`,
-          message: `Presensi Anda pada agenda "${activity?.activity_name || 'Kegiatan'}" telah dicatat oleh koordinator.`,
+          title: 'Presensi Terverifikasi: Check-in',
+          message: `Presensi kehadiran Anda pada agenda "${activity?.activity_name || 'Kegiatan'}" telah dicatat oleh koordinator.`,
           notificationType: 'attendance',
           actionUrl: '/dashboard/attendance',
         });
@@ -982,39 +960,37 @@ export default function ActivityDetailPage() {
       matchStatus = a.attendance?.check_in_status === 'late' && a.assignment_status !== 'excused';
     } else if (tableStatusFilter === 'excused') {
       matchStatus = a.assignment_status === 'excused';
-    } else if (tableStatusFilter === 'early_departure') {
-      matchStatus = a.attendance?.check_out_status === 'early_departure';
-    } else if (tableStatusFilter === 'no_checkout') {
-      const checkOutDeadline = activity?.check_out_closes_at || activity?.end_at;
-      const closed = Boolean(
+    } else if (tableStatusFilter === 'alpa') {
+      const toleranceDeadline = activity?.check_in_closes_at || activity?.start_at;
+      const isClosed = Boolean(
         activity?.activity_status === 'completed' ||
-        (checkOutDeadline && new Date() > new Date(checkOutDeadline))
+        (toleranceDeadline && new Date().getTime() > new Date(toleranceDeadline).getTime() + 2 * 60 * 60 * 1000)
       );
-      matchStatus = Boolean(a.attendance?.check_in_at && !a.attendance?.check_out_at && closed);
-    } else if (tableStatusFilter === 'checked_in') {
-      matchStatus = Boolean(a.attendance?.check_in_at);
+      matchStatus = !a.attendance?.check_in_at && a.assignment_status !== 'excused' && isClosed;
     } else if (tableStatusFilter === 'not_checked_in') {
       matchStatus = !a.attendance?.check_in_at && a.assignment_status !== 'excused';
+    } else if (tableStatusFilter === 'checked_in') {
+      matchStatus = Boolean(a.attendance?.check_in_at && a.assignment_status !== 'excused');
     }
 
     return matchField && matchSearch && matchStatus;
   });
 
-  const checkOutDeadline = activity?.check_out_closes_at || activity?.end_at;
-  const isCheckoutClosed = Boolean(
+  // Batas alpa: 2 jam setelah batas toleransi check-in
+  const toleranceDeadline = activity?.check_in_closes_at || activity?.start_at;
+  const isGracePeriodOver = Boolean(
     activity?.activity_status === 'completed' ||
-    (checkOutDeadline && new Date() > new Date(checkOutDeadline))
+    (toleranceDeadline && new Date().getTime() > new Date(toleranceDeadline).getTime() + 2 * 60 * 60 * 1000)
   );
 
   const totalAssigned = assignments.length;
   const totalExcused = assignments.filter(a => a.assignment_status === 'excused').length;
-  const totalCheckedIn = assignments.filter(a => a.attendance?.check_in_at).length;
+  const totalCheckedIn = assignments.filter(a => a.attendance?.check_in_at && a.assignment_status !== 'excused').length;
   const totalOnTime = assignments.filter(a => a.attendance?.check_in_status === 'on_time' && a.assignment_status !== 'excused').length;
   const totalLate = assignments.filter(a => a.attendance?.check_in_status === 'late' && a.assignment_status !== 'excused').length;
-  const totalEarly = assignments.filter(a => a.attendance?.check_out_status === 'early_departure').length;
-  const totalNoCheckout = assignments.filter(
-    a => a.attendance?.check_in_at && !a.attendance?.check_out_at && isCheckoutClosed
-  ).length;
+  const totalUnchecked = Math.max(0, totalAssigned - totalCheckedIn - totalExcused);
+  const totalAlpa = isGracePeriodOver ? totalUnchecked : 0;
+  const totalNotCheckedIn = isGracePeriodOver ? 0 : totalUnchecked;
 
   const myField = currentUser?.field;
   const canManage = Boolean(
@@ -1050,6 +1026,15 @@ export default function ActivityDetailPage() {
           {/* Tombol Aksi di Header Utama - Khusus Koordinator & Admin */}
           {canManage && (
             <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+              <button
+                onClick={handleExportExcel}
+                disabled={exportingExcel}
+                className="px-3.5 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title="Ekspor Rekapitulasi Presensi Agenda Ini ke File Excel (.xlsx)"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>{exportingExcel ? 'Mengekspor...' : 'Export Excel'}</span>
+              </button>
               <button
                 onClick={() => setIsShareModalOpen(true)}
                 className="px-3.5 py-2.5 rounded-xl text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
@@ -1172,9 +1157,13 @@ export default function ActivityDetailPage() {
                   <span className="text-slate-500 font-medium">Jendela On-Time:</span>
                   <span className="font-medium text-slate-800">{formatTimeWITA(activity.check_in_opens_at)} - {formatTimeWITA(activity.check_in_closes_at)}</span>
                 </div>
-                <div className="p-2.5 rounded-xl bg-amber-50/60 border border-amber-200 flex items-center justify-between">
-                  <span className="text-amber-800 font-medium">Jendela Check-out:</span>
-                  <span className="font-semibold text-amber-900">{formatTimeWITA(activity.check_out_opens_at)} - {formatTimeWITA(activity.check_out_closes_at)}</span>
+                <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 flex items-center justify-between">
+                  <span className="text-amber-800 font-medium text-xs">Batas Izin & Alpa (+2 Jam):</span>
+                  <span className="font-bold text-amber-900 font-mono">{formatTimeWITA(new Date(new Date(activity.check_in_closes_at || activity.start_at).getTime() + 2 * 60 * 60 * 1000).toISOString())} WITA</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                  <span className="text-slate-500 font-medium">Selesai Acara:</span>
+                  <span className="font-medium text-slate-800">{formatTimeWITA(activity.end_at || activity.check_out_closes_at)} WITA</span>
                 </div>
               </div>
 
@@ -1242,20 +1231,31 @@ export default function ActivityDetailPage() {
         {/* Right Column: Live Attendance Monitor */}
         <Card
           title="Pemantau Presensi Panitia"
-          subtitle={`${totalCheckedIn} hadir (${totalOnTime} Tepat Waktu, ${totalLate} Terlambat), ${totalExcused} Izin/Dispensasi dari ${totalAssigned} panitia ditugaskan`}
+          subtitle={`${totalCheckedIn} hadir (${totalOnTime} Tepat Waktu, ${totalLate} Terlambat), ${totalExcused} Izin/Dispensasi, ${isGracePeriodOver ? `${totalAlpa} Alpa` : `${totalNotCheckedIn} Belum Hadir`} dari ${totalAssigned} panitia ditugaskan`}
           action={
-            canManage ? (
+            <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={() => {
-                  setSelectedMemberIds([]);
-                  setIsAssignModalOpen(true);
-                }}
-                className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+                onClick={handleExportExcel}
+                disabled={exportingExcel}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer disabled:opacity-50"
+                title="Ekspor Rekapitulasi Presensi ke Excel (.xlsx)"
               >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>+ Tugaskan Panitia</span>
+                <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{exportingExcel ? 'Mengekspor...' : 'Export Excel'}</span>
               </button>
-            ) : undefined
+              {canManage && (
+                <button
+                  onClick={() => {
+                    setSelectedMemberIds([]);
+                    setIsAssignModalOpen(true);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-teal-800 bg-teal-50 hover:bg-teal-100 border border-teal-200 transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>+ Tugaskan Panitia</span>
+                </button>
+              )}
+            </div>
           }
           className="lg:col-span-2"
         >
@@ -1282,11 +1282,11 @@ export default function ActivityDetailPage() {
                 <option value="on_time">🟢 Tepat Waktu ({totalOnTime})</option>
                 <option value="late">🔴 Terlambat ({totalLate})</option>
                 <option value="excused">🟣 Izin / Dispensasi ({totalExcused})</option>
-                <option value="early_departure">🟠 Pulang Mendahului ({totalEarly})</option>
-                {isCheckoutClosed && totalNoCheckout > 0 && (
-                  <option value="no_checkout">⚠️ Tidak Check-out ({totalNoCheckout})</option>
+                {isGracePeriodOver ? (
+                  <option value="alpa">🔴 Alpa ({totalAlpa})</option>
+                ) : (
+                  <option value="not_checked_in">🟡 Belum Hadir ({totalNotCheckedIn})</option>
                 )}
-                <option value="not_checked_in">🟡 Belum Check-in ({totalAssigned - totalCheckedIn - totalExcused})</option>
               </select>
 
               <select
@@ -1370,44 +1370,34 @@ export default function ActivityDetailPage() {
               <span className="w-1.5 h-1.5 rounded-full bg-purple-500" />
               Izin / Dispensasi ({totalExcused})
             </button>
-            <button
-              type="button"
-              onClick={() => setTableStatusFilter('early_departure')}
-              className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                tableStatusFilter === 'early_departure'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-amber-50 text-amber-800 hover:bg-amber-100 border border-amber-300'
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-              Mendahului ({totalEarly})
-            </button>
-            {isCheckoutClosed && totalNoCheckout > 0 && (
+            {isGracePeriodOver ? (
               <button
                 type="button"
-                onClick={() => setTableStatusFilter('no_checkout')}
+                onClick={() => setTableStatusFilter('alpa')}
                 className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                  tableStatusFilter === 'no_checkout'
+                  tableStatusFilter === 'alpa'
                     ? 'bg-rose-700 text-white shadow-xs'
-                    : 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-300'
+                    : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-300'
                 }`}
+                title="Panitia yang tidak hadir dan tidak ada konfirmasi izin 2 jam setelah batas toleransi check-in"
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-rose-600" />
-                Tidak Check-out ({totalNoCheckout})
+                Alpa ({totalAlpa})
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setTableStatusFilter('not_checked_in')}
+                className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                  tableStatusFilter === 'not_checked_in'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                Belum Hadir ({totalNotCheckedIn})
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => setTableStatusFilter('not_checked_in')}
-              className={`px-2.5 py-1 rounded-lg font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
-                tableStatusFilter === 'not_checked_in'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200'
-              }`}
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
-              Belum Hadir ({totalAssigned - totalCheckedIn})
-            </button>
           </div>
 
           {filteredAssignments.length === 0 ? (
@@ -1450,8 +1440,7 @@ export default function ActivityDetailPage() {
                     <th className="py-2.5 px-3">Panitia</th>
                     <th className="py-2.5 px-3">Divisi / Posisi & Jobdesk</th>
                     <th className="py-2.5 px-3">Status Hadir</th>
-                    <th className="py-2.5 px-3">Masuk</th>
-                    <th className="py-2.5 px-3">Pulang</th>
+                    <th className="py-2.5 px-3">Waktu Presensi</th>
                     {canManage && <th className="py-2.5 px-3 text-right">Aksi</th>}
                   </tr>
                 </thead>
@@ -1490,35 +1479,18 @@ export default function ActivityDetailPage() {
                             </div>
                           ) : att?.check_in_at ? (
                             <Badge status={att.check_in_status} />
+                          ) : isGracePeriodOver ? (
+                            <span className="text-rose-700 bg-rose-50 border border-rose-300 px-2 py-0.5 rounded text-[11px] font-bold">
+                              Alpa (Tidak Hadir)
+                            </span>
                           ) : (
-                            <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-medium">Belum Check-in</span>
+                            <span className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded text-[11px] font-medium">
+                              Belum Check-in
+                            </span>
                           )}
                         </td>
                         <td className="py-2.5 px-3 font-mono text-[11px] text-slate-600">
                           {att?.check_in_at ? formatTimeWITA(att.check_in_at) : '-'}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          {att?.check_out_at ? (
-                            <div className="flex flex-col gap-0.5 items-start">
-                              <span className="font-mono text-[11px] text-slate-700 font-semibold">{formatTimeWITA(att.check_out_at)}</span>
-                              {att.check_out_status === 'early_departure' ? (
-                                <span className="text-[10px] text-amber-800 font-bold bg-amber-50 border border-amber-300 px-1.5 py-0.5 rounded">
-                                  Mendahului
-                                </span>
-                              ) : (
-                                <span className="text-[10px] text-emerald-700 font-medium">Sesuai Jadwal</span>
-                              )}
-                            </div>
-                          ) : att?.check_in_at && isCheckoutClosed ? (
-                            <div className="flex flex-col gap-0.5 items-start">
-                              <span className="text-[10px] text-rose-700 font-bold bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded">
-                                Tidak Check-out
-                              </span>
-                              <span className="text-[9px] text-slate-400">Melewati Batas</span>
-                            </div>
-                          ) : (
-                            <span className="text-slate-400 font-mono text-[11px]">-</span>
-                          )}
                         </td>
                         {canManage && (
                           <td className="py-2.5 px-3 text-right">
@@ -1534,7 +1506,7 @@ export default function ActivityDetailPage() {
                               ) : !att?.check_in_at ? (
                                 <>
                                   <button
-                                    onClick={() => handleQuickAttendance(item.id, item.member?.full_name || 'Panitia', 'check_in')}
+                                    onClick={() => handleQuickAttendance(item.id, item.member?.full_name || 'Panitia')}
                                     className="px-2 py-1 rounded-md text-[11px] font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors cursor-pointer"
                                     title="Catat Masuk"
                                   >
@@ -1548,21 +1520,9 @@ export default function ActivityDetailPage() {
                                     + Izin
                                   </button>
                                 </>
-                              ) : !att?.check_out_at ? (
-                                <button
-                                  onClick={() => handleQuickAttendance(item.id, item.member?.full_name || 'Panitia', 'check_out')}
-                                  className={`px-2 py-1 rounded-md text-[11px] font-semibold border transition-colors cursor-pointer ${
-                                    isCheckoutClosed
-                                      ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                                      : 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
-                                  }`}
-                                  title={isCheckoutClosed ? 'Konfirmasi Pulang Susulan (Melewati Batas)' : 'Catat Pulang (Check-out)'}
-                                >
-                                  + Pulang {isCheckoutClosed ? '(Susulan)' : '(Check-out)'}
-                                </button>
                               ) : (
                                 <span className="text-[10px] text-emerald-700 font-semibold px-2 py-0.5 rounded bg-emerald-50 border border-emerald-200">
-                                  Selesai
+                                  Tercatat Hadir
                                 </span>
                               )}
 
@@ -1824,16 +1784,23 @@ export default function ActivityDetailPage() {
 
           {/* Checklist Anggota dengan Tombol Pilih Semua */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <label className="font-semibold text-slate-700">
-                Daftar Anggota Tersedia ({filteredUnassignedMembers.length} Tersedia, {selectedMemberIds.length} Dipilih)
-              </label>
+            <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+              <div>
+                <label className="font-semibold text-slate-700 block text-xs">
+                  Daftar Anggota Tersedia ({filteredUnassignedMembers.length} Tersedia, {selectedMemberIds.length} Dipilih)
+                </label>
+                {alreadyAssignedInField.length > 0 && (
+                  <span className="text-[10px] text-teal-700 font-medium block mt-0.5">
+                    ✓ {alreadyAssignedInField.length} anggota divisi ini sudah ditugaskan (Total: {filteredUnassignedMembers.length + alreadyAssignedInField.length} panitia)
+                  </span>
+                )}
+              </div>
 
               {filteredUnassignedMembers.length > 0 && (
                 <button
                   type="button"
                   onClick={handleSelectAllVisible}
-                  className="text-xs text-teal-700 hover:text-teal-800 font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                  className="text-xs text-teal-700 hover:text-teal-800 font-bold flex items-center gap-1 transition-colors cursor-pointer shrink-0"
                 >
                   <CheckSquare className="w-3.5 h-3.5" />
                   {filteredUnassignedMembers.every(m => selectedMemberIds.includes(m.id))
@@ -1842,6 +1809,14 @@ export default function ActivityDetailPage() {
                 </button>
               )}
             </div>
+
+            {/* Info ringkas anggota yang sudah bertugas */}
+            {alreadyAssignedInField.length > 0 && (
+              <div className="mb-2 p-2 rounded-xl bg-teal-50/70 border border-teal-200/80 text-[11px] text-teal-900 leading-relaxed">
+                <span className="font-semibold">Sudah Bertugas di Agenda Ini ({alreadyAssignedInField.length}): </span>
+                <span className="text-teal-800">{alreadyAssignedInField.map(m => m.full_name).join(', ')}</span>
+              </div>
+            )}
 
             {filteredUnassignedMembers.length === 0 ? (
               <div className="p-6 bg-slate-50 border border-slate-200 rounded-xl text-center text-slate-500 text-xs">
@@ -2028,7 +2003,29 @@ export default function ActivityDetailPage() {
               />
             </div>
             <div>
-              <label className="block font-semibold text-teal-900 mb-1">Batas Toleransi Check-in *</label>
+              <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+                <label className="block font-semibold text-teal-900 text-xs">Batas Toleransi Check-in *</label>
+                {editForm.checkInOpensAt && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const [datePart, timePart] = editForm.checkInOpensAt.split('T');
+                      if (datePart && timePart) {
+                        const [year, month, day] = datePart.split('-').map(Number);
+                        const [hours, minutes] = timePart.split(':').map(Number);
+                        const d = new Date(year, month - 1, day, hours, minutes + 30);
+                        const pad = (n: number) => n.toString().padStart(2, '0');
+                        const newTol = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                        setEditForm({ ...editForm, checkInClosesAt: newTol });
+                      }
+                    }}
+                    className="px-2 py-0.5 rounded text-[10px] font-semibold bg-teal-100 hover:bg-teal-200 text-teal-800 border border-teal-300 transition-colors cursor-pointer"
+                    title="Opsi isi otomatis 30 menit dari jam buka presensi"
+                  >
+                    +30 Menit (Opsi Standar)
+                  </button>
+                )}
+              </div>
               <input
                 type="datetime-local"
                 required
@@ -2036,32 +2033,84 @@ export default function ActivityDetailPage() {
                 onChange={(e) => setEditForm({ ...editForm, checkInClosesAt: e.target.value })}
                 className="w-full p-2 rounded-lg bg-white border border-teal-300 text-slate-900 focus:outline-none focus:border-teal-500"
               />
+              <p className="text-[10px] text-teal-700/80 mt-1">Setelah jam ini, status kehadiran dicatat "Terlambat". Bebas diisi atau gunakan opsi +30 menit.</p>
             </div>
+
+            {editForm.checkInClosesAt && (
+              <div className="col-span-1 sm:col-span-2 p-2.5 rounded-lg bg-teal-100/70 border border-teal-300 text-[11px] text-teal-900 flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-1.5 font-medium">
+                  <Clock className="w-3.5 h-3.5 text-teal-700 shrink-0" />
+                  <span>Batas Izin & Vonis Alpa (+2 Jam dari Toleransi):</span>
+                </div>
+                <span className="font-mono font-bold text-teal-950 bg-white px-2 py-0.5 rounded border border-teal-200">
+                  {formatDateTimeWITA(parseWitaToIso((() => {
+                    const [datePart, timePart] = editForm.checkInClosesAt.split('T');
+                    if (!datePart || !timePart) return '';
+                    const [year, month, day] = datePart.split('-').map(Number);
+                    const [hours, minutes] = timePart.split(':').map(Number);
+                    const d = new Date(year, month - 1, day, hours, minutes + 120);
+                    const pad = (n: number) => n.toString().padStart(2, '0');
+                    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                  })()))}
+                </span>
+              </div>
+            )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3 bg-amber-50/50 rounded-xl border border-amber-200">
-            <div>
-              <label className="block font-semibold text-amber-900 mb-1">Check-out Dibuka *</label>
-              <input
-                type="datetime-local"
-                required
-                value={editForm.checkOutOpensAt}
-                onChange={(e) => setEditForm({ ...editForm, checkOutOpensAt: e.target.value })}
-                className="w-full p-2 rounded-lg bg-white border border-amber-300 text-slate-900 focus:outline-none focus:border-amber-500"
-              />
-              <p className="text-[10px] text-amber-700/80 mt-1">Check-out sebelum jam ini tercatat status "Mendahului".</p>
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="flex items-center justify-between mb-1.5 flex-wrap gap-1">
+              <label className="block font-semibold text-slate-800 text-xs">Waktu Selesai Kegiatan *</label>
+              {editForm.checkInOpensAt && (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-slate-400">Atur durasi:</span>
+                  {[
+                    { label: '+1.5 Jam', mins: 90 },
+                    { label: '+2 Jam', mins: 120 },
+                    { label: '+3 Jam', mins: 180 },
+                    { label: '+4 Jam', mins: 240 },
+                  ].map((dur) => (
+                    <button
+                      key={dur.label}
+                      type="button"
+                      onClick={() => {
+                        const [datePart, timePart] = editForm.checkInOpensAt.split('T');
+                        if (datePart && timePart) {
+                          const [year, month, day] = datePart.split('-').map(Number);
+                          const [hours, minutes] = timePart.split(':').map(Number);
+                          const d = new Date(year, month - 1, day, hours, minutes + dur.mins);
+                          const pad = (n: number) => n.toString().padStart(2, '0');
+                          const newEnd = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+                          setEditForm({
+                            ...editForm,
+                            checkOutClosesAt: newEnd,
+                            checkOutOpensAt: newEnd,
+                            endAt: newEnd,
+                          });
+                        }
+                      }}
+                      className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-200/80 hover:bg-teal-100 hover:text-teal-800 text-slate-700 transition-colors cursor-pointer"
+                    >
+                      {dur.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            <div>
-              <label className="block font-semibold text-amber-900 mb-1">Batas Toleransi Check-out *</label>
-              <input
-                type="datetime-local"
-                required
-                value={editForm.checkOutClosesAt}
-                onChange={(e) => setEditForm({ ...editForm, checkOutClosesAt: e.target.value })}
-                className="w-full p-2 rounded-lg bg-white border border-amber-300 text-slate-900 focus:outline-none focus:border-amber-500"
-              />
-              <p className="text-[10px] text-amber-700/80 mt-1">Batas akhir penutupan jendela presensi pulang.</p>
-            </div>
+            <input
+              type="datetime-local"
+              required
+              value={editForm.checkOutClosesAt}
+              onChange={(e) => setEditForm({ 
+                ...editForm, 
+                checkOutClosesAt: e.target.value,
+                checkOutOpensAt: e.target.value,
+                endAt: e.target.value 
+              })}
+              className="w-full p-2 rounded-lg bg-white border border-slate-300 text-slate-900 focus:outline-none focus:border-teal-500"
+            />
+            <p className="text-[11px] text-slate-500 mt-1.5 leading-relaxed">
+              Waktu resmi agenda kegiatan berakhir (misal: 17:00 WITA).
+            </p>
           </div>
 
           <div className="flex items-center gap-2 pt-1">
@@ -2272,8 +2321,8 @@ export default function ActivityDetailPage() {
                     <p className="font-bold text-teal-700">{formatTimeWITA(activity.check_in_closes_at)} WITA</p>
                   </div>
                   <div>
-                    <span className="text-slate-500 block text-[10px]">Jendela Check-out:</span>
-                    <p className="font-bold text-amber-700">{formatTimeWITA(activity.check_out_opens_at)} - {formatTimeWITA(activity.check_out_closes_at)} WITA</p>
+                    <span className="text-slate-500 block text-[10px]">Waktu Selesai Kegiatan:</span>
+                    <p className="font-bold text-slate-800">{formatTimeWITA(activity.check_out_closes_at || activity.end_at)} WITA</p>
                   </div>
                 </div>
               </div>

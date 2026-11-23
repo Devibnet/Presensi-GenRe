@@ -92,7 +92,24 @@ export default function AttendancePage() {
         .in('assignment_status', ['active', 'excused'])
         .order('created_at', { ascending: false });
 
-      if (data) setAssignments(data as any);
+      if (data) {
+        // Normalisasi attendance: Supabase PostgREST 1-to-N mengembalikan array.
+        // Ekstrak record attendance yang sah (approved / memiliki check_in_at).
+        const normalized = data.map((item: any) => {
+          const raw = item.attendance || item.attendances;
+          let att: any = null;
+          if (Array.isArray(raw)) {
+            att = raw.find((a: any) => a?.check_in_at && (a?.verification_status === 'approved' || !a?.verification_status)) || raw[0] || null;
+          } else {
+            att = raw || null;
+          }
+          return {
+            ...item,
+            attendance: att,
+          };
+        });
+        setAssignments(normalized as any);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -103,7 +120,11 @@ export default function AttendancePage() {
   const fetchManualRequests = async () => {
     setLoadingManual(true);
     try {
-      const res = await fetch('/api/attendance/manual');
+      const { data: { user } } = await supabase.auth.getUser();
+      const url = user
+        ? `/api/attendance/manual?myOnly=true&userId=${user.id}`
+        : '/api/attendance/manual?myOnly=true';
+      const res = await fetch(url);
       if (res.ok) {
         const json = await res.json();
         if (json.data) setManualRequests(json.data);
@@ -317,13 +338,16 @@ export default function AttendancePage() {
 
   // Open Delete Manual Request
   const openDeleteManualModal = (req: any) => {
-    setSelectedManualForEdit(req);
+    setSelectedManualForDelete(req);
     setIsDeleteManualModalOpen(true);
   };
 
   // Submit Delete Manual Request
   const handleDeleteManualSubmit = async () => {
-    if (!selectedManualForDelete) return;
+    if (!selectedManualForDelete) {
+      setIsDeleteManualModalOpen(false);
+      return;
+    }
 
     setDeletingManual(true);
     try {
@@ -382,28 +406,11 @@ export default function AttendancePage() {
       <Card className="p-5 sm:p-6 bg-gradient-to-br from-white via-teal-50/30 to-emerald-50/40 border-teal-200 shadow-sm overflow-hidden">
         {isCameraOpen ? (
           <div className="space-y-3">
-            <div className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between ${
-              activeScanAction === 'check_out'
-                ? 'bg-amber-50 border-amber-200 text-amber-800'
-                : 'bg-teal-50 border-teal-200 text-teal-800'
-            }`}>
+            <div className="p-2.5 rounded-xl border bg-teal-50 border-teal-200 text-teal-800 text-xs font-bold flex items-center justify-between">
               <div className="flex items-center gap-2">
-                {activeScanAction === 'check_out' ? (
-                  <LogOut className="w-4 h-4 text-amber-600" />
-                ) : (
-                  <Camera className="w-4 h-4 text-teal-600" />
-                )}
-                <span>
-                  Mode Pemindaian: <strong>{activeScanAction === 'check_out' ? 'Check-out (Kepulangan)' : 'Check-in (Kedatangan)'}</strong>
-                </span>
+                <Camera className="w-4 h-4 text-teal-600" />
+                <span>Mode Pemindaian: <strong>Check-in (Presensi Kehadiran)</strong></span>
               </div>
-              <button
-                type="button"
-                onClick={() => setActiveScanAction(activeScanAction === 'check_in' ? 'check_out' : 'check_in')}
-                className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-semibold text-slate-700 hover:text-slate-900 transition-colors"
-              >
-                Ganti ke {activeScanAction === 'check_in' ? 'Check-out' : 'Check-in'}
-              </button>
             </div>
 
             <CameraQrScanner
@@ -422,33 +429,21 @@ export default function AttendancePage() {
                 Pindai QR Code di Lokasi Kegiatan
               </h2>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Pindai QR Code stasiun presensi saat tiba di lokasi untuk <strong>Check-in</strong>, dan pindai kembali saat selesai bertugas untuk <strong>Check-out</strong>.
+                Pindai QR Code stasiun presensi saat tiba di lokasi untuk mencatat kehadiran Anda pada agenda kegiatan.
               </p>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2.5 w-full md:w-auto shrink-0">
+            <div className="w-full md:w-auto shrink-0">
               <button
                 type="button"
                 onClick={() => {
                   setActiveScanAction('check_in');
                   setIsCameraOpen(true);
                 }}
-                className="px-5 py-3 rounded-2xl text-xs font-bold text-white bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 transition-all shadow-md shadow-teal-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full sm:w-auto px-6 py-3.5 rounded-2xl text-xs font-bold text-white bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-500 hover:to-emerald-500 transition-all shadow-md shadow-teal-600/20 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Camera className="w-4 h-4 animate-pulse" />
-                <span>Scan Check-in (Masuk)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveScanAction('check_out');
-                  setIsCameraOpen(true);
-                }}
-                className="px-5 py-3 rounded-2xl text-xs font-bold text-white bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 transition-all shadow-md shadow-amber-600/20 flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Scan Check-out (Pulang)</span>
+                <span>Buka Kamera Scanner Presensi</span>
               </button>
             </div>
           </div>
@@ -456,36 +451,13 @@ export default function AttendancePage() {
       </Card>
 
       {/* ============================================================================== */}
-      {/* ALTERNATIF: INPUT KODE SESI MANUAL (CHECK-IN / CHECK-OUT) */}
+      {/* ALTERNATIF: INPUT KODE SESI MANUAL */}
       {/* ============================================================================== */}
       <Card
         title="Atau Presensi via Kode Sesi Unik"
         subtitle="Jika kamera ponsel tidak dapat digunakan, masukkan kode yang tertera di bawah QR Code stasiun presensi"
       >
         <form onSubmit={handleCodeSubmit} className="space-y-3">
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold text-slate-700">Pilih Aksi:</span>
-            <label className="inline-flex items-center gap-1.5 text-xs text-slate-800 cursor-pointer">
-              <input
-                type="radio"
-                name="codeAction"
-                checked={activeScanAction === 'check_in'}
-                onChange={() => setActiveScanAction('check_in')}
-                className="accent-teal-600"
-              />
-              <span>Check-in (Kedatangan)</span>
-            </label>
-            <label className="inline-flex items-center gap-1.5 text-xs text-slate-800 cursor-pointer">
-              <input
-                type="radio"
-                name="codeAction"
-                checked={activeScanAction === 'check_out'}
-                onChange={() => setActiveScanAction('check_out')}
-                className="accent-amber-600"
-              />
-              <span>Check-out (Kepulangan)</span>
-            </label>
-          </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
@@ -501,21 +473,117 @@ export default function AttendancePage() {
             <button
               type="submit"
               disabled={submittingCode || !sessionCodeInput}
-              className={`px-6 py-2.5 rounded-xl text-xs font-bold text-white disabled:opacity-50 transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm ${
-                activeScanAction === 'check_out'
-                  ? 'bg-amber-600 hover:bg-amber-700'
-                  : 'bg-teal-600 hover:bg-teal-700'
-              }`}
+              className="px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
             >
-              {submittingCode
-                ? 'Memvalidasi...'
-                : activeScanAction === 'check_out'
-                ? 'Check-out Sekarang'
-                : 'Check-in Sekarang'}
+              {submittingCode ? 'Memvalidasi...' : 'Check-in Sekarang'}
             </button>
           </div>
         </form>
       </Card>
+
+      {/* ============================================================================== */}
+      {/* HISTORI & REKAPITULASI PRESENSI PANITIA (TRANSPARANSI KEDISIPLINAN) */}
+      {/* ============================================================================== */}
+      {(() => {
+        // Helper mengekstrak record presensi sah (menangani objek tunggal maupun array dari PostgREST)
+        const getAtt = (item: any) => {
+          const raw = item?.attendance || item?.attendances;
+          if (Array.isArray(raw)) {
+            return raw.find((a: any) => a?.check_in_at && (a?.verification_status === 'approved' || !a?.verification_status)) || raw[0] || null;
+          }
+          return raw || null;
+        };
+
+        const totalMyAssignments = assignments.length;
+        const myOnTimeCount = assignments.filter((a) => {
+          const att = getAtt(a);
+          return att?.check_in_status === 'on_time' && a.assignment_status !== 'excused';
+        }).length;
+
+        const myLateCount = assignments.filter((a) => {
+          const att = getAtt(a);
+          return att?.check_in_status === 'late' && a.assignment_status !== 'excused';
+        }).length;
+
+        const myExcusedCount = assignments.filter((a) => a.assignment_status === 'excused').length;
+
+        const myAlpaCount = assignments.filter((a) => {
+          if (a.assignment_status === 'excused') return false;
+          const att = getAtt(a);
+          if (att?.check_in_at) return false;
+          const toleranceDeadline = a.activity?.check_in_closes_at || a.activity?.start_at;
+          const isClosed = Boolean(
+            a.activity?.activity_status === 'completed' ||
+            (toleranceDeadline && new Date().getTime() > new Date(toleranceDeadline).getTime() + 2 * 60 * 60 * 1000)
+          );
+          return isClosed;
+        }).length;
+
+        const myPendingCount = Math.max(0, totalMyAssignments - myOnTimeCount - myLateCount - myExcusedCount - myAlpaCount);
+
+        return (
+          <Card
+            title="Histori & Rekapitulasi Presensi Saya"
+            subtitle="Pantau kedisiplinan dan transparansi akumulasi poin kehadiran sistem Anda secara real-time"
+            className="bg-white border-slate-200"
+          >
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="p-3 rounded-2xl bg-emerald-50/80 border border-emerald-200">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-emerald-800">Tepat Waktu</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                </div>
+                <span className="text-xl sm:text-2xl font-black text-emerald-900">{myOnTimeCount}</span>
+                <span className="text-[10px] text-emerald-700/80 block mt-0.5">+100% Poin Hadir & On-Time</span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-amber-50/80 border border-amber-200">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-amber-800">Terlambat</span>
+                  <span className="w-2 h-2 rounded-full bg-amber-500" />
+                </div>
+                <span className="text-xl sm:text-2xl font-black text-amber-900">{myLateCount}</span>
+                <span className="text-[10px] text-amber-700/80 block mt-0.5">+ Poin Hadir, 0 On-Time</span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-purple-50/80 border border-purple-200">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-purple-800">Izin / Sakit</span>
+                  <span className="w-2 h-2 rounded-full bg-purple-500" />
+                </div>
+                <span className="text-xl sm:text-2xl font-black text-purple-900">{myExcusedCount}</span>
+                <span className="text-[10px] text-purple-700/80 block mt-0.5">Dispensasi Sah (Poin Aman)</span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-rose-50/80 border border-rose-200">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[11px] font-bold text-rose-800">Alpa</span>
+                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                </div>
+                <span className="text-xl sm:text-2xl font-black text-rose-900">{myAlpaCount}</span>
+                <span className="text-[10px] text-rose-700/80 block mt-0.5">0 Poin (Memotong Nilai)</span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 text-slate-700">
+                <ShieldCheck className="w-4 h-4 text-teal-600 shrink-0" />
+                <span>
+                  Total Tugas: <strong>{totalMyAssignments} Agenda</strong> • Kehadiran Sah: <strong>{myOnTimeCount + myLateCount + myExcusedCount}</strong> ({totalMyAssignments > 0 ? Math.round(((myOnTimeCount + myLateCount + myExcusedCount) / totalMyAssignments) * 100) : 0}%)
+                  {myPendingCount > 0 && ` • Menunggu Jadwal: ${myPendingCount}`}
+                </span>
+              </div>
+              <a
+                href="/dashboard/evaluations"
+                className="text-xs font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1 shrink-0 transition-colors"
+              >
+                <span>Lihat Transkrip & Nilai Akhir</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </Card>
+        );
+      })()}
 
       {/* ============================================================================== */}
       {/* DAFTAR KEGIATAN YANG DITUGASKAN KEPADA SAYA */}
@@ -574,15 +642,16 @@ export default function AttendancePage() {
           <div className="space-y-3.5">
             {assignments.map((item) => {
               const act = item.activity;
-              const att = item.attendance;
+              const rawAtt = item.attendance || (item as any).attendances;
+              const att = Array.isArray(rawAtt)
+                ? rawAtt.find((a: any) => a?.check_in_at && (a?.verification_status === 'approved' || !a?.verification_status)) || rawAtt[0] || null
+                : rawAtt || null;
               const isCheckedIn = Boolean(att?.check_in_at);
-              const isCheckedOut = Boolean(att?.check_out_at);
-              const checkOutDeadline = act?.check_out_closes_at || act?.end_at;
-              const isCheckoutClosed = Boolean(
+              const toleranceDeadline = act?.check_in_closes_at || act?.start_at;
+              const isGracePeriodOver = Boolean(
                 act?.activity_status === 'completed' ||
-                (checkOutDeadline && new Date() > new Date(checkOutDeadline))
+                (toleranceDeadline && new Date().getTime() > new Date(toleranceDeadline).getTime() + 2 * 60 * 60 * 1000)
               );
-              const isMissedCheckout = isCheckedIn && !isCheckedOut && isCheckoutClosed;
 
               return (
                 <div
@@ -598,27 +667,14 @@ export default function AttendancePage() {
                         <Badge status="excused" label="Izin / Dispensasi" />
                       ) : isCheckedIn ? (
                         <Badge status={att?.check_in_status || 'on_time'} />
+                      ) : isGracePeriodOver ? (
+                        <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-rose-50 text-rose-700 border border-rose-300 font-bold">
+                          Alpa (Tidak Hadir)
+                        </span>
                       ) : (
                         <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-semibold">
-                          Belum Hadir
+                          Belum Check-in
                         </span>
-                      )}
-                      {item.assignment_status !== 'excused' && (
-                        isCheckedOut ? (
-                          <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-semibold border ${
-                            att?.check_out_status === 'early_departure'
-                              ? 'bg-amber-50 text-amber-800 border-amber-300'
-                              : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          }`}>
-                            {att?.check_out_status === 'early_departure'
-                              ? 'Pulang Mendahului'
-                              : 'Pulang Sesuai Jadwal'}
-                          </span>
-                        ) : isMissedCheckout ? (
-                          <span className="text-[10px] px-2.5 py-0.5 rounded-full font-semibold border bg-rose-50 text-rose-700 border-rose-200">
-                            Tidak Check-out (Batas Waktu Berakhir)
-                          </span>
-                        ) : null
                       )}
                     </div>
 
@@ -650,24 +706,45 @@ export default function AttendancePage() {
                     )}
 
                     {/* Rincian Waktu Hadir */}
-                    {item.assignment_status !== 'excused' && (isCheckedIn || isCheckedOut) && (
+                    {item.assignment_status !== 'excused' && isCheckedIn && (
                       <div className="mt-2 pt-2 border-t border-slate-200/60 flex flex-wrap gap-4 text-xs font-mono text-slate-600">
-                        {isCheckedIn && (
-                          <span className="text-emerald-700 font-semibold">
-                            Masuk: {formatTimeWITA(att?.check_in_at)}
-                          </span>
-                        )}
-                        {isCheckedOut ? (
-                          <span className="text-teal-700 font-semibold">
-                            Pulang: {formatTimeWITA(att?.check_out_at)}
-                          </span>
-                        ) : isMissedCheckout ? (
-                          <span className="text-rose-600 font-medium">
-                            Pulang: Tidak tercatat presensi keluar
-                          </span>
-                        ) : null}
+                        <span className="text-emerald-700 font-semibold">
+                          Waktu Hadir: {formatTimeWITA(att?.check_in_at)} ({att?.check_in_status === 'on_time' ? 'Tepat Waktu' : 'Terlambat'})
+                        </span>
                       </div>
                     )}
+
+                    {/* Kotak Transparansi Penilaian Agenda */}
+                    <div className="mt-2 text-[11px] leading-relaxed">
+                      {item.assignment_status === 'excused' ? (
+                        <div className="flex items-center gap-2 text-purple-900 bg-purple-50/70 p-2 rounded-xl border border-purple-200">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                          <span><strong>Transparansi Nilai:</strong> Izin resmi disetujui koordinator. Poin kehadiran & ketepatan terlindungi penuh (100%).</span>
+                        </div>
+                      ) : isCheckedIn ? (
+                        att?.check_in_status === 'on_time' ? (
+                          <div className="flex items-center gap-2 text-emerald-900 bg-emerald-50/70 p-2 rounded-xl border border-emerald-200">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span><strong>Transparansi Nilai:</strong> Hadir tepat waktu ({formatTimeWITA(att.check_in_at)}). Memperoleh poin maksimal (Kehadiran: +20, On-Time: +10, Bebas Alpa: +10).</span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-amber-900 bg-amber-50/70 p-2 rounded-xl border border-amber-200">
+                            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span><strong>Transparansi Nilai:</strong> Hadir terlambat ({formatTimeWITA(att?.check_in_at)}). Memperoleh poin kehadiran (+20) & bebas alpa (+10), namun 0 poin on-time.</span>
+                          </div>
+                        )
+                      ) : isGracePeriodOver ? (
+                        <div className="flex items-center gap-2 text-rose-900 bg-rose-50/70 p-2 rounded-xl border border-rose-200">
+                          <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                          <span><strong>Transparansi Nilai:</strong> Alpa tanpa keterangan (melewati 2 jam setelah batas toleransi check-in). Mendapatkan 0 poin dan memotong skor kepatuhan bebas alpa.</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-2 text-slate-700 bg-slate-100/70 p-2 rounded-xl border border-slate-200">
+                          <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                          <span><strong>Status Sesi:</strong> Kegiatan masih berlangsung / dalam batas toleransi. Segera lakukan check-in di stasiun QR meja registrasi.</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Tombol Aksi Mandiri */}
@@ -677,7 +754,17 @@ export default function AttendancePage() {
                         <CheckCircle2 className="w-4 h-4 text-purple-600" />
                         <span>Dispensasi Diterima</span>
                       </div>
-                    ) : !isCheckedIn ? (
+                    ) : isCheckedIn ? (
+                      <div className="px-3.5 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>Presensi Tercatat</span>
+                      </div>
+                    ) : isGracePeriodOver ? (
+                      <div className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-1.5">
+                        <AlertCircle className="w-4 h-4 text-rose-600" />
+                        <span>Status Alpa</span>
+                      </div>
+                    ) : (
                       <>
                         <button
                           onClick={() => {
@@ -702,37 +789,6 @@ export default function AttendancePage() {
                           <span>Ajukan Izin</span>
                         </button>
                       </>
-                    ) : !isCheckedOut ? (
-                      isMissedCheckout ? (
-                        <button
-                          onClick={() => {
-                            setSelectedAssignmentId(item.id);
-                            setClaimedTime(new Date().toISOString().slice(0, 16));
-                            setIsManualModalOpen(true);
-                          }}
-                          className="px-3.5 py-2 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-                          title="Batas waktu check-out telah berakhir. Ajukan presensi manual jika Anda hadir sampai kegiatan selesai."
-                        >
-                          <HelpCircle className="w-3.5 h-3.5" />
-                          <span>Ajukan Pulang Manual</span>
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => {
-                            setActiveScanAction('check_out');
-                            setIsCameraOpen(true);
-                          }}
-                          className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-amber-600 hover:bg-amber-500 transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <LogOut className="w-4 h-4" />
-                          <span>Check-out Kamera</span>
-                        </button>
-                      )
-                    ) : (
-                      <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span>Presensi Lengkap</span>
-                      </div>
                     )}
                   </div>
                 </div>
@@ -885,9 +941,7 @@ export default function AttendancePage() {
                 onChange={(e) => setAttendanceType(e.target.value as any)}
                 className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500 font-medium"
               >
-                <option value="check_in">Check-in (Kedatangan Manual)</option>
-                <option value="check_out">Check-out (Kepulangan Manual)</option>
-                <option value="both">Keduanya (Check-in & Check-out)</option>
+                <option value="check_in">Presensi Kehadiran Manual</option>
                 <option value="excused">🟣 Izin / Sakit (Dispensasi Ketidakhadiran)</option>
               </select>
             </div>
@@ -983,9 +1037,7 @@ export default function AttendancePage() {
                 onChange={(e) => setEditManualForm({ ...editManualForm, attendanceType: e.target.value })}
                 className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:outline-none focus:border-teal-500"
               >
-                <option value="check_in">Check-in (Kedatangan)</option>
-                <option value="check_out">Check-out (Kepulangan)</option>
-                <option value="both">Keduanya (Check-in & Check-out)</option>
+                <option value="check_in">Presensi Kehadiran Manual</option>
               </select>
             </div>
             <div>
@@ -1062,8 +1114,11 @@ export default function AttendancePage() {
             <button
               type="button"
               disabled={deletingManual}
-              onClick={() => setIsDeleteManualModalOpen(false)}
-              className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
+              onClick={() => {
+                setIsDeleteManualModalOpen(false);
+                setSelectedManualForDelete(null);
+              }}
+              className="px-4 py-2 font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
             >
               Batal
             </button>
@@ -1071,7 +1126,7 @@ export default function AttendancePage() {
               type="button"
               disabled={deletingManual}
               onClick={handleDeleteManualSubmit}
-              className="px-4 py-2 font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-colors shadow-sm shadow-rose-600/20"
+              className="px-4 py-2 font-semibold bg-rose-600 hover:bg-rose-700 text-white rounded-xl transition-colors shadow-sm shadow-rose-600/20 cursor-pointer disabled:opacity-50"
             >
               {deletingManual ? 'Membatalkan...' : 'Ya, Batalkan Permohonan'}
             </button>

@@ -30,6 +30,8 @@ const STATUS_LABELS: Record<string, string> = {
   under_review: 'Dalam Peninjauan',
   resolved: 'Diselesaikan',
   excused: 'Izin / Dispensasi',
+  alpa: 'Alpa',
+  absent: 'Alpa',
 };
 
 export function Badge({ status, label, className = '' }: BadgeProps) {

@@ -63,7 +63,8 @@ async function syncAll() {
         activity_status,
         attendance_required,
         start_at,
-        end_at
+        end_at,
+        check_out_closes_at
       ),
       attendances(
         id,
@@ -140,13 +141,11 @@ async function syncAll() {
     const totalAssigned = eligible.length;
     let presentCount = 0;
     let onTimeCount = 0;
-    let checkoutCount = 0;
 
     eligible.forEach((asg) => {
       if (asg.assignment_status === 'excused') {
         presentCount++;
         onTimeCount++;
-        checkoutCount++;
       } else {
         const approvedAtt = (asg.attendances || []).find(
           (a) => a.verification_status === 'approved'
@@ -156,31 +155,24 @@ async function syncAll() {
           if (approvedAtt.check_in_status === 'on_time' || approvedAtt.check_in_status === 'excused') {
             onTimeCount++;
           }
-          if (
-            approvedAtt.check_out_at ||
-            approvedAtt.check_in_status === 'excused' ||
-            approvedAtt.check_out_status === 'normal' ||
-            approvedAtt.check_out_method === 'manual' ||
-            approvedAtt.check_out_method === 'qr' ||
-            (approvedAtt.attendance_note && approvedAtt.attendance_note.toLowerCase().includes('disetujui'))
-          ) {
-            checkoutCount++;
-          }
         }
       }
     });
 
     let attPoints = 0.0;
     let puncPoints = 0.0;
-    let checkoutPoints = 0.0;
+    let compliancePoints = 0.0;
 
     if (totalAssigned > 0) {
+      // 1. Kehadiran Masuk: Maks 20.00 Poin
       attPoints = Math.min(20.0, Math.max(0.0, Number(((presentCount / totalAssigned) * 20.0).toFixed(2))));
+      // 2. Ketepatan Waktu: Maks 10.00 Poin
       puncPoints = Math.min(10.0, Math.max(0.0, Number(((onTimeCount / totalAssigned) * 10.0).toFixed(2))));
-      checkoutPoints = Math.min(10.0, Math.max(0.0, Number(((checkoutCount / totalAssigned) * 10.0).toFixed(2))));
+      // 3. Kepatuhan Kehadiran (Bebas Alpa): Maks 10.00 Poin (proporsional hadir/izin vs alpa)
+      compliancePoints = Math.min(10.0, Math.max(0.0, Number(((presentCount / totalAssigned) * 10.0).toFixed(2))));
     }
 
-    const systemScore = Math.min(40.0, Math.max(0.0, Number((attPoints + puncPoints + checkoutPoints).toFixed(2))));
+    const systemScore = Math.min(40.0, Math.max(0.0, Number((attPoints + puncPoints + compliancePoints).toFixed(2))));
     const rev = reviewMap.get(m.id);
     const coordScore = Math.min(60.0, Math.max(0.0, Number(rev?.total_weighted_score || 0.0)));
     const finalScore = Math.min(100.0, Math.max(0.0, Number((systemScore + coordScore).toFixed(2))));
@@ -213,7 +205,7 @@ async function syncAll() {
       policy_id: policyId,
       attendance_points: attPoints,
       punctuality_points: puncPoints,
-      task_completion_points: checkoutPoints,
+      task_completion_points: compliancePoints,
       system_score: systemScore,
       coordinator_score: coordScore,
       final_score: finalScore,
